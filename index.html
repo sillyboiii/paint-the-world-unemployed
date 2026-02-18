@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>US Unemployment Rate Map</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1>US Unemployment Map</h1>
+      <p class="subtitle">Official data from the Bureau of Labor Statistics</p>
+    </div>
+    <div id="data-period" class="data-period">Loading data...</div>
+  </header>
+
+  <main>
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <p>Fetching unemployment data from BLS...</p>
+    </div>
+
+    <div id="error-banner" class="error-banner hidden">
+      <span id="error-text"></span>
+      <span class="error-note">Using most recent available data.</span>
+    </div>
+
+    <div id="content" class="hidden">
+      <div id="stats-bar">
+        <div class="stat-card lowest">
+          <div class="stat-label">Lowest Rate</div>
+          <div class="stat-state" id="lowest-state">—</div>
+          <div class="stat-rate" id="lowest-rate">—</div>
+        </div>
+        <div class="stat-card national">
+          <div class="stat-label">US Average</div>
+          <div class="stat-state">All States</div>
+          <div class="stat-rate" id="national-rate">—</div>
+        </div>
+        <div class="stat-card highest">
+          <div class="stat-label">Highest Rate</div>
+          <div class="stat-state" id="highest-state">—</div>
+          <div class="stat-rate" id="highest-rate">—</div>
+        </div>
+      </div>
+
+      <div id="map-wrapper">
+        <svg id="map"></svg>
+
+        <div id="tooltip" class="tooltip hidden">
+          <div class="tooltip-state" id="tt-state"></div>
+          <div class="tooltip-rate" id="tt-rate"></div>
+          <div class="tooltip-period" id="tt-period"></div>
+          <div class="tooltip-rank" id="tt-rank"></div>
+        </div>
+
+        <div id="legend-box">
+          <div class="legend-title">Unemployment Rate</div>
+          <svg id="legend-svg"></svg>
+          <div class="legend-labels">
+            <span id="legend-min"></span>
+            <span id="legend-max"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>
+      Data: <a href="https://www.bls.gov/lau/" target="_blank" rel="noopener">BLS Local Area Unemployment Statistics (LAUS)</a>
+      &nbsp;·&nbsp; Seasonally adjusted state unemployment rates
+    </p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+  <script src="app.js"></script>
+</body>
+</html>
