@@ -3,79 +3,153 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>US Unemployment Rate Map</title>
+  <title>US Unemployment Map</title>
+  <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <div class="header-content">
-      <h1>US Unemployment Map</h1>
-      <p class="subtitle">Official data from the Bureau of Labor Statistics</p>
-    </div>
-    <div id="data-period" class="data-period">Loading data...</div>
-  </header>
 
-  <main>
-    <div id="loading" class="loading">
-      <div class="spinner"></div>
-      <p>Fetching unemployment data from BLS...</p>
+  <!-- Loading screen -->
+  <div id="loading-screen">
+    <div class="loader-content">
+      <div class="loader-spinner"></div>
+      <div class="loader-title">US Unemployment Map</div>
+      <div class="loader-status" id="loader-status">Loading map data…</div>
+      <div class="loader-bar"><div id="loader-progress"></div></div>
     </div>
+  </div>
 
-    <div id="error-banner" class="error-banner hidden">
-      <span id="error-text"></span>
-      <span class="error-note">Using most recent available data.</span>
-    </div>
+  <div id="app">
 
-    <div id="content" class="hidden">
-      <div id="stats-bar">
-        <div class="stat-card lowest">
-          <div class="stat-label">Lowest Rate</div>
-          <div class="stat-state" id="lowest-state">—</div>
-          <div class="stat-rate" id="lowest-rate">—</div>
+    <!-- Mobile sidebar toggle -->
+    <button id="sidebar-toggle" aria-label="Open sidebar">☰</button>
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar">
+
+      <div class="sidebar-header">
+        <div>
+          <h1>US Unemployment</h1>
+          <p class="sidebar-sub">BLS LAUS · Census ACS</p>
         </div>
-        <div class="stat-card national">
-          <div class="stat-label">US Average</div>
-          <div class="stat-state">All States</div>
-          <div class="stat-rate" id="national-rate">—</div>
-        </div>
-        <div class="stat-card highest">
-          <div class="stat-label">Highest Rate</div>
-          <div class="stat-state" id="highest-state">—</div>
-          <div class="stat-rate" id="highest-rate">—</div>
+        <button id="sidebar-close" aria-label="Close sidebar">✕</button>
+      </div>
+
+      <!-- Search -->
+      <div class="sidebar-section">
+        <div class="section-label">Search</div>
+        <div class="search-wrap">
+          <input type="text" id="search-input" placeholder="State or county…"
+                 autocomplete="off" spellcheck="false">
+          <button id="search-clear" class="hidden" aria-label="Clear search">✕</button>
+          <div id="search-results" class="hidden"></div>
         </div>
       </div>
 
-      <div id="map-wrapper">
-        <svg id="map"></svg>
-
-        <div id="tooltip" class="tooltip hidden">
-          <div class="tooltip-state" id="tt-state"></div>
-          <div class="tooltip-rate" id="tt-rate"></div>
-          <div class="tooltip-period" id="tt-period"></div>
-          <div class="tooltip-rank" id="tt-rank"></div>
+      <!-- Selected area detail -->
+      <div class="sidebar-section">
+        <div class="section-label">Selected Area</div>
+        <div id="detail-placeholder" class="placeholder-text">
+          Hover or click a state&nbsp;/ county
         </div>
-
-        <div id="legend-box">
-          <div class="legend-title">Unemployment Rate</div>
-          <svg id="legend-svg"></svg>
-          <div class="legend-labels">
-            <span id="legend-min"></span>
-            <span id="legend-max"></span>
+        <div id="detail-card" class="hidden">
+          <div class="detail-type" id="detail-type"></div>
+          <div class="detail-name" id="detail-name"></div>
+          <div class="detail-rate-row">
+            <span class="detail-rate" id="detail-rate"></span>
+            <span class="detail-rank" id="detail-rank"></span>
+          </div>
+          <div class="detail-period" id="detail-period"></div>
+          <div id="trend-loading" class="hidden trend-loading">Loading trend…</div>
+          <div id="trend-wrap" class="hidden">
+            <div class="trend-label">Annual Unemployment Trend</div>
+            <svg id="trend-chart"></svg>
           </div>
         </div>
       </div>
+
+      <!-- Filter -->
+      <div class="sidebar-section">
+        <div class="section-label">
+          Filter by Rate
+          <button id="filter-reset" class="reset-btn">Reset</button>
+        </div>
+        <div class="filter-row">
+          <span class="filter-lbl">Min</span>
+          <input type="range" id="filter-min" min="0" max="20" step="0.5" value="0">
+          <span class="filter-val" id="filter-min-val">0.0%</span>
+        </div>
+        <div class="filter-row">
+          <span class="filter-lbl">Max</span>
+          <input type="range" id="filter-max" min="0" max="20" step="0.5" value="20">
+          <span class="filter-val" id="filter-max-val">20.0%</span>
+        </div>
+      </div>
+
+      <!-- Rankings -->
+      <div class="sidebar-section rankings-section">
+        <div class="section-label">
+          Rankings
+          <span class="view-badge" id="view-badge">States</span>
+        </div>
+        <div class="rank-tabs">
+          <button class="rank-tab active" data-dir="high">▲ Highest</button>
+          <button class="rank-tab" data-dir="low">▼ Lowest</button>
+        </div>
+        <div id="rankings-list"></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <a href="https://www.bls.gov/lau/" target="_blank" rel="noopener">BLS LAUS</a>
+        &nbsp;·&nbsp;
+        <a href="https://www.census.gov/programs-surveys/acs/" target="_blank" rel="noopener">Census ACS 5-yr</a>
+      </div>
+    </aside>
+
+    <!-- ===== MAP ===== -->
+    <div id="map-container">
+      <div id="map"></div>
+
+      <!-- Tooltip -->
+      <div id="tooltip" class="hidden">
+        <div class="tt-name" id="tt-name"></div>
+        <div class="tt-rate" id="tt-rate"></div>
+        <div class="tt-meta" id="tt-meta"></div>
+      </div>
+
+      <!-- Map controls -->
+      <div id="map-controls">
+        <button id="btn-zoom-in"  title="Zoom in">+</button>
+        <button id="btn-zoom-out" title="Zoom out">−</button>
+        <button id="btn-reset"    title="Reset view">⌂</button>
+      </div>
+
+      <!-- Error banner -->
+      <div id="error-banner" class="hidden">
+        <span id="error-text"></span>
+      </div>
+
+      <!-- Zoom / layer badge -->
+      <div id="zoom-badge">States</div>
+
+      <!-- Legend -->
+      <div id="legend">
+        <div class="legend-title">Unemployment Rate</div>
+        <div class="legend-gradient"></div>
+        <div class="legend-labels">
+          <span>0%</span>
+          <span>50%</span>
+          <span>100%</span>
+        </div>
+        <div class="legend-note">0% → black &nbsp;·&nbsp; 100% → white</div>
+      </div>
     </div>
-  </main>
 
-  <footer>
-    <p>
-      Data: <a href="https://www.bls.gov/lau/" target="_blank" rel="noopener">BLS Local Area Unemployment Statistics (LAUS)</a>
-      &nbsp;·&nbsp; Seasonally adjusted state unemployment rates
-    </p>
-  </footer>
+  </div><!-- #app -->
 
-  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
   <script src="app.js"></script>
 </body>
 </html>

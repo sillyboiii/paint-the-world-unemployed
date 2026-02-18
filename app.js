@@ -1,13 +1,26 @@
-/* =====================================================================
-   US Unemployment Choropleth Map
-   Data: BLS Local Area Unemployment Statistics (LAUS)
-   Fallback: embedded 2024 Q3 annual average state rates
-   ===================================================================== */
+'use strict';
 
-// ------------------------------------------------------------------
-// State metadata: FIPS code, name, and BLS seasonally-adjusted series
-// BLS series format: LASST + fips(2) + 0000000000 + 003
-// ------------------------------------------------------------------
+/* =====================================================================
+   CONSTANTS
+===================================================================== */
+const MAP_CENTER   = [-98.5795, 39.8283];
+const MAP_ZOOM     = 3.6;
+const MAP_MAX_ZOOM = 12;
+
+// Zoom thresholds for state → county crossfade
+const ZOOM_CO_START = 4.8;   // counties begin fading in
+const ZOOM_CO_FULL  = 6.5;   // counties fully visible
+const ZOOM_ST_OUT   = 7.2;   // states fully faded out
+
+const TOPO_STATES   = 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json';
+const TOPO_COUNTIES = 'https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json';
+const BLS_API       = 'https://api.bls.gov/publicAPI/v1/timeseries/data/';
+const CENSUS_URL    = 'https://api.census.gov/data/2023/acs/acs5/subject'
+                    + '?get=NAME,S2301_C04_001E&for=county:*';
+
+/* =====================================================================
+   STATE METADATA (51 entries: 50 states + DC)
+===================================================================== */
 const STATES = [
   { fips: '01', name: 'Alabama',        abbr: 'AL' },
   { fips: '02', name: 'Alaska',         abbr: 'AK' },
@@ -62,303 +75,994 @@ const STATES = [
   { fips: '56', name: 'Wyoming',        abbr: 'WY' },
 ];
 
-// Build series-ID → fips lookup for BLS response parsing
-// BLS LAUS seasonally adjusted state rate: LASST{fips}0000000000003
-function seriesId(fips) {
+// Quick lookup: fips2 → state object
+const STATE_BY_FIPS = Object.fromEntries(STATES.map(s => [s.fips, s]));
+
+/* =====================================================================
+   FALLBACK DATA — BLS 2024 annual average state unemployment rates (%)
+   Source: BLS Local Area Unemployment Statistics
+===================================================================== */
+const FALLBACK_RATES = {
+  '01': 3.1, '02': 4.2, '04': 3.5, '05': 3.3, '06': 5.3,
+  '08': 3.5, '09': 4.4, '10': 4.3, '11': 5.7, '12': 3.4,
+  '13': 3.5, '15': 3.1, '16': 3.6, '17': 4.7, '18': 3.7,
+  '19': 2.7, '20': 2.7, '21': 4.8, '22': 4.1, '23': 3.0,
+  '24': 2.9, '25': 4.0, '26': 4.3, '27': 3.2, '28': 4.1,
+  '29': 3.6, '30': 3.0, '31': 2.4, '32': 5.4, '33': 2.6,
+  '34': 4.7, '35': 4.4, '36': 4.3, '37': 3.6, '38': 2.1,
+  '39': 4.2, '40': 3.2, '41': 4.4, '42': 3.9, '44': 4.4,
+  '45': 3.5, '46': 2.0, '47': 3.7, '48': 4.0, '49': 3.5,
+  '50': 2.2, '51': 2.9, '53': 4.7, '54': 4.7, '55': 3.2,
+  '56': 3.5,
+};
+
+/* =====================================================================
+   COLOR: 0% unemployment = #000000 (black), 100% = #ffffff (white)
+   Linear grayscale. Typical rates 2–10% → very dark grays.
+===================================================================== */
+function rateToColor(rate) {
+  if (rate === null || rate === undefined || !isFinite(rate)) return '#111'; // no data
+  const v = Math.round(Math.min(Math.max(rate, 0), 100) * 2.55);
+  const h = v.toString(16).padStart(2, '0');
+  return `#${h}${h}${h}`;
+}
+
+// "dimmed" color for filtered-out areas: a dim blue-tinted dark
+const DIM_COLOR = '#0a0a14';
+
+/* =====================================================================
+   BLS series-ID builder — seasonally adjusted state unemployment rate
+===================================================================== */
+function blsSeriesId(fips) {
   return `LASST${fips}0000000000003`;
 }
 
-// ------------------------------------------------------------------
-// Fallback data: BLS 2024 annual average state unemployment rates (%)
-// Source: BLS LAUS program, released Jan 2025
-// ------------------------------------------------------------------
-const FALLBACK = {
-  '01': { rate: 3.1,  period: '2024 Annual Avg' },
-  '02': { rate: 4.2,  period: '2024 Annual Avg' },
-  '04': { rate: 3.5,  period: '2024 Annual Avg' },
-  '05': { rate: 3.3,  period: '2024 Annual Avg' },
-  '06': { rate: 5.3,  period: '2024 Annual Avg' },
-  '08': { rate: 3.5,  period: '2024 Annual Avg' },
-  '09': { rate: 4.4,  period: '2024 Annual Avg' },
-  '10': { rate: 4.3,  period: '2024 Annual Avg' },
-  '11': { rate: 5.7,  period: '2024 Annual Avg' },
-  '12': { rate: 3.4,  period: '2024 Annual Avg' },
-  '13': { rate: 3.5,  period: '2024 Annual Avg' },
-  '15': { rate: 3.1,  period: '2024 Annual Avg' },
-  '16': { rate: 3.6,  period: '2024 Annual Avg' },
-  '17': { rate: 4.7,  period: '2024 Annual Avg' },
-  '18': { rate: 3.7,  period: '2024 Annual Avg' },
-  '19': { rate: 2.7,  period: '2024 Annual Avg' },
-  '20': { rate: 2.7,  period: '2024 Annual Avg' },
-  '21': { rate: 4.8,  period: '2024 Annual Avg' },
-  '22': { rate: 4.1,  period: '2024 Annual Avg' },
-  '23': { rate: 3.0,  period: '2024 Annual Avg' },
-  '24': { rate: 2.9,  period: '2024 Annual Avg' },
-  '25': { rate: 4.0,  period: '2024 Annual Avg' },
-  '26': { rate: 4.3,  period: '2024 Annual Avg' },
-  '27': { rate: 3.2,  period: '2024 Annual Avg' },
-  '28': { rate: 4.1,  period: '2024 Annual Avg' },
-  '29': { rate: 3.6,  period: '2024 Annual Avg' },
-  '30': { rate: 3.0,  period: '2024 Annual Avg' },
-  '31': { rate: 2.4,  period: '2024 Annual Avg' },
-  '32': { rate: 5.4,  period: '2024 Annual Avg' },
-  '33': { rate: 2.6,  period: '2024 Annual Avg' },
-  '34': { rate: 4.7,  period: '2024 Annual Avg' },
-  '35': { rate: 4.4,  period: '2024 Annual Avg' },
-  '36': { rate: 4.3,  period: '2024 Annual Avg' },
-  '37': { rate: 3.6,  period: '2024 Annual Avg' },
-  '38': { rate: 2.1,  period: '2024 Annual Avg' },
-  '39': { rate: 4.2,  period: '2024 Annual Avg' },
-  '40': { rate: 3.2,  period: '2024 Annual Avg' },
-  '41': { rate: 4.4,  period: '2024 Annual Avg' },
-  '42': { rate: 3.9,  period: '2024 Annual Avg' },
-  '44': { rate: 4.4,  period: '2024 Annual Avg' },
-  '45': { rate: 3.5,  period: '2024 Annual Avg' },
-  '46': { rate: 2.0,  period: '2024 Annual Avg' },
-  '47': { rate: 3.7,  period: '2024 Annual Avg' },
-  '48': { rate: 4.0,  period: '2024 Annual Avg' },
-  '49': { rate: 3.5,  period: '2024 Annual Avg' },
-  '50': { rate: 2.2,  period: '2024 Annual Avg' },
-  '51': { rate: 2.9,  period: '2024 Annual Avg' },
-  '53': { rate: 4.7,  period: '2024 Annual Avg' },
-  '54': { rate: 4.7,  period: '2024 Annual Avg' },
-  '55': { rate: 3.2,  period: '2024 Annual Avg' },
-  '56': { rate: 3.5,  period: '2024 Annual Avg' },
-};
+/* =====================================================================
+   APP STATE
+===================================================================== */
+let map;
+let stateRates       = {};   // fips2  → { rate, period }
+let countyRates      = {};   // fips5  → { rate, name, stateFips }
+let stateFeatures    = [];
+let countyFeatures   = [];
+let searchIndex      = [];   // { type, name, fips, feature }
+let countyDataLoaded = false;
+let filterMin        = 0;
+let filterMax        = 20;
+let rankDir          = 'high';
+let selectedFips     = null;
+let selectedType     = null; // 'state' | 'county'
+let hoveredStateId   = null;
+let hoveredCountyId  = null;
 
-// ------------------------------------------------------------------
-// BLS API fetch
-// ------------------------------------------------------------------
-async function fetchBLSData() {
-  const currentYear = new Date().getFullYear().toString();
-  const prevYear = (new Date().getFullYear() - 1).toString();
+/* =====================================================================
+   LOADING PROGRESS
+===================================================================== */
+function setProgress(pct, msg) {
+  document.getElementById('loader-progress').style.width = `${pct}%`;
+  if (msg) document.getElementById('loader-status').textContent = msg;
+}
 
-  // Split 51 series into two batches (BLS v1 limit: 25 per request)
+function hideLoading() {
+  const el = document.getElementById('loading-screen');
+  el.classList.add('fade-out');
+  setTimeout(() => el.remove(), 600);
+}
+
+/* =====================================================================
+   DATA — BLS state unemployment rates (v1 API, no key needed)
+===================================================================== */
+async function fetchBLSStateRates() {
   const fipsList = STATES.map(s => s.fips);
-  const batch1 = fipsList.slice(0, 25).map(seriesId);
-  const batch2 = fipsList.slice(25).map(seriesId);
+  const batch1   = fipsList.slice(0, 25).map(blsSeriesId);
+  const batch2   = fipsList.slice(25).map(blsSeriesId);
 
-  const endpoint = 'https://api.bls.gov/publicAPI/v1/timeseries/data/';
-  const opts = (ids) => ({
+  const post = (ids) => fetch(BLS_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ seriesid: ids, startyear: prevYear, endyear: currentYear }),
-  });
+    body: JSON.stringify({ seriesid: ids, startyear: '2023', endyear: '2025' }),
+  }).then(r => r.json());
 
-  const [r1, r2] = await Promise.all([
-    fetch(endpoint, opts(batch1)).then(r => r.json()),
-    fetch(endpoint, opts(batch2)).then(r => r.json()),
-  ]);
-
+  const [r1, r2] = await Promise.all([post(batch1), post(batch2)]);
   if (r1.status !== 'REQUEST_SUCCEEDED' || r2.status !== 'REQUEST_SUCCEEDED') {
-    throw new Error('BLS API returned non-success status');
+    throw new Error('BLS API did not return success');
   }
 
   const result = {};
   for (const series of [...r1.Results.series, ...r2.Results.series]) {
-    const fips = series.seriesID.slice(5, 7); // extract fips from LASST{fips}...
     if (!series.data || series.data.length === 0) continue;
-    // Take the most recent data point
-    const latest = series.data[0];
-    const periodLabel = `${latest.periodName} ${latest.year}`;
-    result[fips] = { rate: parseFloat(latest.value), period: periodLabel };
+    const fips   = series.seriesID.slice(5, 7);
+    const latest = series.data[0]; // already sorted newest first
+    result[fips] = {
+      rate:   parseFloat(latest.value),
+      period: `${latest.periodName} ${latest.year}`,
+    };
   }
   return result;
 }
 
-// ------------------------------------------------------------------
-// Parse BLS period string → sort key so we can pick the latest value
-// ------------------------------------------------------------------
-function parsePeriod(data) {
-  // find the most recent period among all states
-  const samples = Object.values(data).map(d => d.period).filter(Boolean);
-  if (samples.length === 0) return 'Recent';
-  // Return the most common period label
-  const counts = {};
-  samples.forEach(p => { counts[p] = (counts[p] || 0) + 1; });
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+/* =====================================================================
+   DATA — Census ACS 5-year county unemployment rates (no key needed)
+   Variable S2301_C04_001E = unemployment rate 16+ years (%)
+===================================================================== */
+async function fetchCensusCountyRates() {
+  const resp = await fetch(CENSUS_URL);
+  if (!resp.ok) throw new Error(`Census API ${resp.status}`);
+  const rows = await resp.json();
+
+  const result = {};
+  for (let i = 1; i < rows.length; i++) {
+    const [name, rateStr, state, county] = rows[i];
+    const rate = parseFloat(rateStr);
+    if (!isFinite(rate) || rate < 0) continue; // -888888888 = suppressed/N/A
+    const fips = state + county;
+    result[fips] = {
+      rate,
+      name:      name.split(',')[0].trim(), // strip ", State Name"
+      stateFips: state,
+    };
+  }
+  return result;
 }
 
-// ------------------------------------------------------------------
-// Render the choropleth
-// ------------------------------------------------------------------
-function renderMap(usGeo, rateData) {
-  const wrapper = document.getElementById('map-wrapper');
-  const w = wrapper.clientWidth || 960;
-  const h = Math.round(w * 0.6);
+/* =====================================================================
+   DATA — BLS state trend (annual averages, last 6 years)
+   Called on demand when a state is clicked in the sidebar
+===================================================================== */
+async function fetchStateTrend(fips) {
+  const startYear = String(new Date().getFullYear() - 6);
+  const endYear   = String(new Date().getFullYear());
 
-  const svg = d3.select('#map').attr('viewBox', `0 0 ${w} ${h}`).attr('width', w).attr('height', h);
-  svg.selectAll('*').remove();
+  const resp = await fetch(BLS_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      seriesid: [blsSeriesId(fips)],
+      startyear: startYear,
+      endyear:   endYear,
+    }),
+  });
+  const json = await resp.json();
+  if (json.status !== 'REQUEST_SUCCEEDED') throw new Error('BLS trend error');
 
-  const projection = d3.geoAlbersUsa().fitSize([w, h], topojson.feature(usGeo, usGeo.objects.states));
-  const path = d3.geoPath().projection(projection);
+  const data = json.Results.series[0].data;
 
-  const rates = STATES.map(s => rateData[s.fips]?.rate).filter(Number.isFinite);
-  const minRate = d3.min(rates);
-  const maxRate = d3.max(rates);
+  // Prefer M13 (annual average) records
+  let annual = data
+    .filter(d => d.period === 'M13')
+    .map(d => ({ year: +d.year, rate: parseFloat(d.value) }))
+    .filter(d => isFinite(d.rate))
+    .sort((a, b) => a.year - b.year);
 
-  // Sequential color scale: cream → dark navy-red
-  const colorScale = d3.scaleSequential()
-    .domain([minRate, maxRate])
-    .interpolator(d3.interpolateRgbBasis([
-      '#e8f4fd',  // near-white blue  (lowest)
-      '#90caf9',  // light blue
-      '#42a5f5',  // mid blue
-      '#1565c0',  // deep blue
-      '#b71c1c',  // dark red         (highest)
-    ]));
-
-  // Build fips → state name for tooltip
-  const fipsToState = {};
-  STATES.forEach(s => { fipsToState[s.fips] = s; });
-
-  const tooltip = document.getElementById('tooltip');
-  const ttState  = document.getElementById('tt-state');
-  const ttRate   = document.getElementById('tt-rate');
-  const ttPeriod = document.getElementById('tt-period');
-  const ttRank   = document.getElementById('tt-rank');
-
-  // Sort states by rate for ranking
-  const sorted = STATES
-    .map(s => ({ ...s, rate: rateData[s.fips]?.rate }))
-    .filter(s => s.rate !== undefined)
-    .sort((a, b) => b.rate - a.rate);
-  const rankMap = {};
-  sorted.forEach((s, i) => { rankMap[s.fips] = i + 1; });
-
-  svg.append('g')
-    .selectAll('path')
-    .data(topojson.feature(usGeo, usGeo.objects.states).features)
-    .join('path')
-      .attr('class', 'state')
-      .attr('d', path)
-      .attr('fill', d => {
-        const fips = String(d.id).padStart(2, '0');
-        const r = rateData[fips]?.rate;
-        return Number.isFinite(r) ? colorScale(r) : '#333';
-      })
-      .on('mousemove', (event, d) => {
-        const fips = String(d.id).padStart(2, '0');
-        const state = fipsToState[fips];
-        const info = rateData[fips];
-        if (!state) return;
-
-        ttState.textContent = state.name;
-        ttRate.textContent   = info ? `${info.rate.toFixed(1)}%` : 'N/A';
-        ttPeriod.textContent = info?.period || '';
-        ttRank.textContent   = rankMap[fips]
-          ? `Ranked #${rankMap[fips]} of ${sorted.length} (highest)`
-          : '';
-
-        const pad = 14;
-        const tw = tooltip.offsetWidth;
-        const th = tooltip.offsetHeight;
-        let tx = event.clientX + pad;
-        let ty = event.clientY - th / 2;
-        if (tx + tw > window.innerWidth)  tx = event.clientX - tw - pad;
-        if (ty < 4)                        ty = 4;
-        if (ty + th > window.innerHeight)  ty = window.innerHeight - th - 4;
-
-        tooltip.style.left = `${tx}px`;
-        tooltip.style.top  = `${ty}px`;
-        tooltip.classList.remove('hidden');
-      })
-      .on('mouseleave', () => tooltip.classList.add('hidden'));
-
-  // State borders
-  svg.append('path')
-    .datum(topojson.mesh(usGeo, usGeo.objects.states, (a, b) => a !== b))
-    .attr('class', 'state-boundary')
-    .attr('d', path);
-
-  renderLegend(colorScale, minRate, maxRate);
-  renderStats(rateData, sorted);
-
-  const period = parsePeriod(rateData);
-  document.getElementById('data-period').textContent = `Data period: ${period}`;
-}
-
-// ------------------------------------------------------------------
-// Legend
-// ------------------------------------------------------------------
-function renderLegend(colorScale, minRate, maxRate) {
-  const lw = 180, lh = 12;
-  const svg = d3.select('#legend-svg').attr('width', lw).attr('height', lh);
-  svg.selectAll('*').remove();
-
-  const defs = svg.append('defs');
-  const grad = defs.append('linearGradient').attr('id', 'leg-grad');
-  const steps = 10;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    grad.append('stop')
-      .attr('offset', `${t * 100}%`)
-      .attr('stop-color', colorScale(minRate + t * (maxRate - minRate)));
+  // Fallback: average all monthly records per year
+  if (annual.length === 0) {
+    const byYear = {};
+    data.forEach(d => {
+      const r = parseFloat(d.value);
+      if (isFinite(r) && d.period !== 'M13') {
+        if (!byYear[d.year]) byYear[d.year] = [];
+        byYear[d.year].push(r);
+      }
+    });
+    annual = Object.entries(byYear)
+      .map(([yr, vals]) => ({ year: +yr, rate: vals.reduce((a, b) => a + b) / vals.length }))
+      .sort((a, b) => a.year - b.year);
   }
 
-  svg.append('rect')
-    .attr('width', lw).attr('height', lh)
-    .attr('rx', 3)
-    .attr('fill', 'url(#leg-grad)');
-
-  document.getElementById('legend-min').textContent = `${minRate.toFixed(1)}%`;
-  document.getElementById('legend-max').textContent = `${maxRate.toFixed(1)}%`;
+  return annual;
 }
 
-// ------------------------------------------------------------------
-// Stats bar
-// ------------------------------------------------------------------
-function renderStats(rateData, sorted) {
-  if (sorted.length === 0) return;
+/* =====================================================================
+   MAP STYLE — Carto dark raster basemap (no API key)
+===================================================================== */
+const MAP_STYLE = {
+  version: 8,
+  sources: {
+    carto: {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+      ],
+      tileSize: 256,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' +
+        ' &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      maxzoom: 19,
+    },
+  },
+  layers: [{ id: 'carto-dark', type: 'raster', source: 'carto' }],
+};
 
-  const highest = sorted[0];
-  const lowest  = sorted[sorted.length - 1];
-  const avg = (sorted.reduce((s, x) => s + x.rate, 0) / sorted.length).toFixed(1);
+/* =====================================================================
+   MAP LAYERS
+   States: visible at low zoom, fade out as user zooms past county threshold
+   Counties: fade in as user zooms in, fully visible at ZOOM_CO_FULL
+===================================================================== */
+function addMapLayers() {
+  // ── STATES ──────────────────────────────────────────────────────
+  map.addSource('states', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: stateFeatures },
+  });
 
-  document.getElementById('highest-state').textContent = highest.name;
-  document.getElementById('highest-rate').textContent  = `${highest.rate.toFixed(1)}%`;
-  document.getElementById('lowest-state').textContent  = lowest.name;
-  document.getElementById('lowest-rate').textContent   = `${lowest.rate.toFixed(1)}%`;
-  document.getElementById('national-rate').textContent = `${avg}%`;
+  // Fill — color stored as feature property, opacity fades with zoom
+  map.addLayer({
+    id: 'states-fill',
+    type: 'fill',
+    source: 'states',
+    paint: {
+      'fill-color': ['get', 'color'],
+      'fill-opacity': [
+        'interpolate', ['linear'], ['zoom'],
+        ZOOM_CO_START, 0.90,
+        ZOOM_ST_OUT,   0,
+      ],
+    },
+  });
+
+  // Borders
+  map.addLayer({
+    id: 'states-line',
+    type: 'line',
+    source: 'states',
+    paint: {
+      'line-color': '#3a3a3a',
+      'line-width': 0.7,
+      'line-opacity': ['interpolate', ['linear'], ['zoom'],
+        ZOOM_CO_START, 1,
+        ZOOM_ST_OUT,   0,
+      ],
+    },
+  });
+
+  // Hover overlay (white tint via feature-state)
+  map.addLayer({
+    id: 'states-hover',
+    type: 'fill',
+    source: 'states',
+    paint: {
+      'fill-color': '#ffffff',
+      'fill-opacity': [
+        'case',
+        ['boolean', ['feature-state', 'hover'], false], 0.14, 0,
+      ],
+    },
+  });
+
+  // Selection outline (white border via feature-state)
+  map.addLayer({
+    id: 'states-selected',
+    type: 'line',
+    source: 'states',
+    paint: {
+      'line-color': '#ffffff',
+      'line-width': ['case',
+        ['boolean', ['feature-state', 'selected'], false], 2.2, 0,
+      ],
+      'line-opacity': ['interpolate', ['linear'], ['zoom'],
+        ZOOM_CO_START, 1,
+        ZOOM_ST_OUT,   0,
+      ],
+    },
+  });
+
+  // ── COUNTIES ────────────────────────────────────────────────────
+  map.addSource('counties', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] }, // populated later
+  });
+
+  // Fill
+  map.addLayer({
+    id: 'counties-fill',
+    type: 'fill',
+    source: 'counties',
+    paint: {
+      'fill-color': ['get', 'color'],
+      'fill-opacity': ['interpolate', ['linear'], ['zoom'],
+        ZOOM_CO_START, 0,
+        ZOOM_CO_FULL,  0.90,
+      ],
+    },
+  });
+
+  // Borders (thinner than state borders)
+  map.addLayer({
+    id: 'counties-line',
+    type: 'line',
+    source: 'counties',
+    paint: {
+      'line-color': '#2a2a2a',
+      'line-width': 0.35,
+      'line-opacity': ['interpolate', ['linear'], ['zoom'],
+        ZOOM_CO_START, 0,
+        ZOOM_CO_FULL,  0.9,
+      ],
+    },
+  });
+
+  // Hover overlay
+  map.addLayer({
+    id: 'counties-hover',
+    type: 'fill',
+    source: 'counties',
+    paint: {
+      'fill-color': '#ffffff',
+      'fill-opacity': [
+        'case',
+        ['boolean', ['feature-state', 'hover'], false], 0.18, 0,
+      ],
+    },
+  });
+
+  // Selection outline
+  map.addLayer({
+    id: 'counties-selected',
+    type: 'line',
+    source: 'counties',
+    paint: {
+      'line-color': '#ffffff',
+      'line-width': ['case',
+        ['boolean', ['feature-state', 'selected'], false], 2.0, 0,
+      ],
+      'line-opacity': ['interpolate', ['linear'], ['zoom'],
+        ZOOM_CO_START, 0,
+        ZOOM_CO_FULL,  1,
+      ],
+    },
+  });
 }
 
-// ------------------------------------------------------------------
-// Main entry point
-// ------------------------------------------------------------------
+/* =====================================================================
+   INTERACTIONS — hover + click on states and counties
+===================================================================== */
+function setupInteractions() {
+  const tooltip = document.getElementById('tooltip');
+  const ttName  = document.getElementById('tt-name');
+  const ttRate  = document.getElementById('tt-rate');
+  const ttMeta  = document.getElementById('tt-meta');
+
+  function showTooltip(e, name, rate, meta) {
+    ttName.textContent = name;
+    ttRate.textContent = rate !== null && isFinite(rate) ? `${rate.toFixed(1)}%` : 'N/A';
+    ttMeta.textContent = meta || '';
+    tooltip.classList.remove('hidden');
+    moveTooltip(e);
+  }
+
+  function moveTooltip(e) {
+    const pad = 16, tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+    let tx = e.clientX + pad, ty = e.clientY - th / 2;
+    if (tx + tw > window.innerWidth)  tx = e.clientX - tw - pad;
+    if (ty < 4)                        ty = 4;
+    if (ty + th > window.innerHeight)  ty = window.innerHeight - th - 4;
+    tooltip.style.left = `${tx}px`;
+    tooltip.style.top  = `${ty}px`;
+  }
+
+  function hideTooltip() { tooltip.classList.add('hidden'); }
+
+  // ── State hover ──────────────────────────────────────────────────
+  map.on('mousemove', 'states-fill', (e) => {
+    if (!e.features.length) return;
+    map.getCanvas().style.cursor = 'pointer';
+    const f    = e.features[0];
+    const fips = String(f.id).padStart(2, '0');
+    const info = stateRates[fips];
+    const rank = sortedStates().findIndex(s => s.fips === fips) + 1;
+
+    if (hoveredStateId !== null && hoveredStateId !== f.id) {
+      map.setFeatureState({ source: 'states', id: hoveredStateId }, { hover: false });
+    }
+    hoveredStateId = f.id;
+    map.setFeatureState({ source: 'states', id: hoveredStateId }, { hover: true });
+
+    showTooltip(
+      e,
+      STATE_BY_FIPS[fips]?.name || fips,
+      info?.rate ?? null,
+      `#${rank} of ${sortedStates().length} states · ${info?.period || '2024 Avg'}`,
+    );
+  });
+
+  map.on('mousemove', (e) => moveTooltip(e));
+
+  map.on('mouseleave', 'states-fill', () => {
+    if (hoveredStateId !== null) {
+      map.setFeatureState({ source: 'states', id: hoveredStateId }, { hover: false });
+      hoveredStateId = null;
+    }
+    map.getCanvas().style.cursor = '';
+    hideTooltip();
+  });
+
+  // ── County hover ─────────────────────────────────────────────────
+  map.on('mousemove', 'counties-fill', (e) => {
+    if (!e.features.length) return;
+    map.getCanvas().style.cursor = 'pointer';
+    const f    = e.features[0];
+    const fips = String(f.id).padStart(5, '0');
+    const info = countyRates[fips];
+    const stAbbr = STATE_BY_FIPS[fips.slice(0, 2)]?.abbr || '';
+    const rank = sortedCounties().findIndex(c => c.fips === fips) + 1;
+
+    if (hoveredCountyId !== null && hoveredCountyId !== f.id) {
+      map.setFeatureState({ source: 'counties', id: hoveredCountyId }, { hover: false });
+    }
+    hoveredCountyId = f.id;
+    map.setFeatureState({ source: 'counties', id: hoveredCountyId }, { hover: true });
+
+    showTooltip(
+      e,
+      info ? `${info.name}, ${stAbbr}` : fips,
+      info?.rate ?? null,
+      rank > 0 ? `#${rank} of ${sortedCounties().length} counties · ACS 2023` : 'ACS 2023',
+    );
+  });
+
+  map.on('mouseleave', 'counties-fill', () => {
+    if (hoveredCountyId !== null) {
+      map.setFeatureState({ source: 'counties', id: hoveredCountyId }, { hover: false });
+      hoveredCountyId = null;
+    }
+    map.getCanvas().style.cursor = '';
+    hideTooltip();
+  });
+
+  // ── State click ──────────────────────────────────────────────────
+  map.on('click', 'states-fill', (e) => {
+    if (!e.features.length) return;
+    // At county zoom, let county handler take priority
+    if (map.getZoom() >= ZOOM_CO_FULL && countyDataLoaded) return;
+    const fips = String(e.features[0].id).padStart(2, '0');
+    selectFeature(fips, 'state');
+  });
+
+  // ── County click ─────────────────────────────────────────────────
+  map.on('click', 'counties-fill', (e) => {
+    if (!e.features.length) return;
+    const fips = String(e.features[0].id).padStart(5, '0');
+    selectFeature(fips, 'county');
+  });
+
+  // ── Zoom → update badges & rankings ──────────────────────────────
+  map.on('zoom', () => {
+    const isCounty = map.getZoom() >= ZOOM_CO_FULL && countyDataLoaded;
+    document.getElementById('zoom-badge').textContent = isCounty ? 'Counties' : 'States';
+    document.getElementById('view-badge').textContent = isCounty ? 'Counties' : 'States';
+    renderRankings();
+  });
+}
+
+/* =====================================================================
+   FEATURE SELECTION — updates sidebar detail card
+===================================================================== */
+function selectFeature(fips, type) {
+  // Deselect previous
+  if (selectedFips !== null) {
+    const src = selectedType === 'state' ? 'states' : 'counties';
+    map.setFeatureState({ source: src, id: +selectedFips }, { selected: false });
+  }
+
+  selectedFips = fips;
+  selectedType = type;
+  const src = type === 'state' ? 'states' : 'counties';
+  map.setFeatureState({ source: src, id: +fips }, { selected: true });
+
+  if (type === 'state') {
+    const info    = stateRates[fips];
+    const state   = STATE_BY_FIPS[fips];
+    const ranked  = sortedStates();
+    const rank    = ranked.findIndex(s => s.fips === fips) + 1;
+    showDetailCard({
+      type:   'State',
+      name:   state?.name || fips,
+      rate:   info?.rate,
+      period: info?.period || '2024 Annual Avg',
+      rank:   `#${rank} of ${ranked.length} states`,
+      fips,
+    });
+  } else {
+    const info   = countyRates[fips];
+    const stAbbr = STATE_BY_FIPS[fips.slice(0, 2)]?.abbr || '';
+    const ranked = sortedCounties();
+    const rank   = ranked.findIndex(c => c.fips === fips) + 1;
+    showDetailCard({
+      type:   'County',
+      name:   info ? `${info.name}, ${stAbbr}` : fips,
+      rate:   info?.rate,
+      period: 'Census ACS 5-Year 2023',
+      rank:   rank > 0 ? `#${rank} of ${ranked.length} counties` : '',
+      fips,
+    });
+  }
+}
+
+/* =====================================================================
+   DETAIL CARD — sidebar panel with rate, rank, and optional trend chart
+===================================================================== */
+async function showDetailCard({ type, name, rate, period, rank, fips }) {
+  document.getElementById('detail-placeholder').classList.add('hidden');
+  const card = document.getElementById('detail-card');
+  card.classList.remove('hidden');
+
+  document.getElementById('detail-type').textContent   = type;
+  document.getElementById('detail-name').textContent   = name;
+  document.getElementById('detail-rate').textContent   = rate != null ? `${rate.toFixed(1)}%` : 'N/A';
+  document.getElementById('detail-rank').textContent   = rank;
+  document.getElementById('detail-period').textContent = period;
+
+  const trendWrap    = document.getElementById('trend-wrap');
+  const trendLoading = document.getElementById('trend-loading');
+  trendWrap.classList.add('hidden');
+  trendLoading.classList.add('hidden');
+
+  // Trend chart — states only (BLS has per-state annual history)
+  if (type === 'State') {
+    trendLoading.classList.remove('hidden');
+    try {
+      const trend = await fetchStateTrend(fips);
+      trendLoading.classList.add('hidden');
+      if (trend && trend.length > 1) {
+        trendWrap.classList.remove('hidden');
+        renderSparkline(trend);
+      }
+    } catch (_) {
+      trendLoading.classList.add('hidden');
+    }
+  }
+}
+
+/* =====================================================================
+   SPARKLINE — D3 line chart showing annual trend in the sidebar
+===================================================================== */
+function renderSparkline(data) {
+  const wrap = document.getElementById('trend-chart').parentElement;
+  const W    = (wrap.clientWidth || 240);
+  const H    = 72;
+  const m    = { top: 8, right: 6, bottom: 18, left: 30 };
+  const iW   = W - m.left - m.right;
+  const iH   = H - m.top - m.bottom;
+
+  const svg = d3.select('#trend-chart')
+    .attr('width', W).attr('height', H)
+    .attr('viewBox', `0 0 ${W} ${H}`);
+  svg.selectAll('*').remove();
+
+  const x = d3.scaleLinear()
+    .domain(d3.extent(data, d => d.year))
+    .range([0, iW]);
+
+  const [yMin, yMax] = d3.extent(data, d => d.rate);
+  const pad = Math.max((yMax - yMin) * 0.3, 0.4);
+  const y = d3.scaleLinear()
+    .domain([yMin - pad, yMax + pad])
+    .range([iH, 0]);
+
+  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+
+  // Subtle grid lines
+  g.append('g')
+    .call(d3.axisLeft(y).ticks(3).tickSize(-iW).tickFormat(''))
+    .call(ax => {
+      ax.select('.domain').remove();
+      ax.selectAll('line').attr('stroke', '#1e1e1e').attr('stroke-dasharray', '3,3');
+    });
+
+  // Area fill
+  g.append('path')
+    .datum(data)
+    .attr('fill', 'rgba(255,255,255,0.04)')
+    .attr('d', d3.area()
+      .x(d => x(d.year)).y0(iH).y1(d => y(d.rate))
+      .curve(d3.curveMonotoneX));
+
+  // Line
+  g.append('path')
+    .datum(data)
+    .attr('fill', 'none')
+    .attr('stroke', '#888')
+    .attr('stroke-width', 1.5)
+    .attr('d', d3.line()
+      .x(d => x(d.year)).y(d => y(d.rate))
+      .curve(d3.curveMonotoneX));
+
+  // Dots
+  g.selectAll('circle').data(data).join('circle')
+    .attr('cx', d => x(d.year))
+    .attr('cy', d => y(d.rate))
+    .attr('r', 2.5)
+    .attr('fill', '#ccc')
+    .attr('stroke', '#000')
+    .attr('stroke-width', 0.8);
+
+  // X axis (year labels)
+  g.append('g')
+    .attr('transform', `translate(0,${iH})`)
+    .call(d3.axisBottom(x).ticks(data.length).tickFormat(d3.format('d')))
+    .call(ax => {
+      ax.select('.domain').attr('stroke', '#2a2a2a');
+      ax.selectAll('.tick line').attr('stroke', '#2a2a2a');
+      ax.selectAll('.tick text').attr('fill', '#555').attr('font-size', '9px');
+    });
+
+  // Y axis (rate labels)
+  g.append('g')
+    .call(d3.axisLeft(y).ticks(3).tickFormat(d => `${d.toFixed(1)}%`))
+    .call(ax => {
+      ax.select('.domain').remove();
+      ax.selectAll('.tick line').remove();
+      ax.selectAll('.tick text').attr('fill', '#555').attr('font-size', '9px');
+    });
+}
+
+/* =====================================================================
+   RANKINGS — sorted list of states or counties shown in the sidebar
+===================================================================== */
+function sortedStates() {
+  return STATES
+    .map(s => ({ ...s, rate: stateRates[s.fips]?.rate }))
+    .filter(s => s.rate !== undefined && s.rate >= filterMin && s.rate <= filterMax)
+    .sort((a, b) => b.rate - a.rate);
+}
+
+function sortedCounties() {
+  if (!countyDataLoaded) return [];
+  return Object.entries(countyRates)
+    .map(([fips, info]) => ({ fips, ...info }))
+    .filter(c => isFinite(c.rate) && c.rate >= filterMin && c.rate <= filterMax)
+    .sort((a, b) => b.rate - a.rate);
+}
+
+function renderRankings() {
+  const isCounty = map && map.getZoom() >= ZOOM_CO_FULL && countyDataLoaded;
+  const all      = isCounty ? sortedCounties() : sortedStates();
+  const items    = rankDir === 'high' ? all.slice(0, 15) : all.slice(-15).reverse();
+  const listEl   = document.getElementById('rankings-list');
+  listEl.innerHTML = '';
+
+  if (items.length === 0) {
+    listEl.innerHTML = '<div style="color:#444;font-size:0.76rem;padding:6px 2px">No data in this range</div>';
+    return;
+  }
+
+  items.forEach((item, i) => {
+    const num  = rankDir === 'high' ? i + 1 : all.length - i;
+    const stAbbr = isCounty ? (STATE_BY_FIPS[item.fips?.slice(0, 2)]?.abbr || '') : '';
+    const displayName = isCounty
+      ? `${item.name || item.fips}${stAbbr ? ', ' + stAbbr : ''}`
+      : (item.name || item.fips);
+
+    const div = document.createElement('div');
+    div.className = 'rank-item';
+    div.innerHTML = `
+      <span class="rank-num">${num}</span>
+      <span class="rank-swatch" style="background:${rateToColor(item.rate)}"></span>
+      <span class="rank-name" title="${displayName}">${displayName}</span>
+      <span class="rank-rate">${item.rate.toFixed(1)}%</span>
+    `;
+
+    div.addEventListener('click', () => flyToItem(item.fips, isCounty ? 'county' : 'state'));
+    listEl.appendChild(div);
+  });
+}
+
+/* =====================================================================
+   FLY-TO — zoom map to a state or county and select it
+===================================================================== */
+function flyToItem(fips, type) {
+  const features = type === 'county' ? countyFeatures : stateFeatures;
+  const padded   = type === 'county' ? fips.padStart(5, '0') : fips.padStart(2, '0');
+  const feature  = features.find(f => String(f.id).padStart(type === 'county' ? 5 : 2, '0') === padded);
+  if (!feature) return;
+
+  const bounds = d3.geoBounds(feature);
+  map.fitBounds(
+    [[bounds[0][0], bounds[0][1]], [bounds[1][0], bounds[1][1]]],
+    { padding: type === 'county' ? 90 : 60, duration: 1100, maxZoom: type === 'county' ? 9 : 7 },
+  );
+  // Select immediately — feature state doesn't require the feature to be rendered
+  selectFeature(padded, type);
+}
+
+/* =====================================================================
+   FILTER — dims areas outside the selected rate range
+===================================================================== */
+function initFilter() {
+  const minEl  = document.getElementById('filter-min');
+  const maxEl  = document.getElementById('filter-max');
+  const minVal = document.getElementById('filter-min-val');
+  const maxVal = document.getElementById('filter-max-val');
+
+  function apply() {
+    filterMin = parseFloat(minEl.value);
+    filterMax = parseFloat(maxEl.value);
+    if (filterMin > filterMax) {
+      [filterMin, filterMax] = [filterMax, filterMin];
+      [minEl.value, maxEl.value] = [String(filterMax), String(filterMin)];
+    }
+    minVal.textContent = `${filterMin.toFixed(1)}%`;
+    maxVal.textContent = `${filterMax.toFixed(1)}%`;
+    refreshColors();
+    renderRankings();
+  }
+
+  minEl.addEventListener('input', apply);
+  maxEl.addEventListener('input', apply);
+
+  document.getElementById('filter-reset').addEventListener('click', () => {
+    minEl.value = '0'; maxEl.value = '20';
+    filterMin = 0; filterMax = 20;
+    minVal.textContent = '0.0%'; maxVal.textContent = '20.0%';
+    refreshColors();
+    renderRankings();
+  });
+}
+
+// Recompute the `color` property for every feature and push updated GeoJSON to MapLibre
+function refreshColors() {
+  const newStates = {
+    type: 'FeatureCollection',
+    features: stateFeatures.map(f => {
+      const rate    = f.properties.rate;
+      const inRange = rate != null && rate >= filterMin && rate <= filterMax;
+      return { ...f, properties: { ...f.properties, color: inRange ? rateToColor(rate) : DIM_COLOR } };
+    }),
+  };
+  if (map.getSource('states')) map.getSource('states').setData(newStates);
+
+  if (countyDataLoaded) {
+    const newCounties = {
+      type: 'FeatureCollection',
+      features: countyFeatures.map(f => {
+        const rate    = f.properties.rate;
+        const inRange = rate != null && rate >= filterMin && rate <= filterMax;
+        return { ...f, properties: { ...f.properties, color: inRange ? rateToColor(rate) : DIM_COLOR } };
+      }),
+    };
+    if (map.getSource('counties')) map.getSource('counties').setData(newCounties);
+  }
+}
+
+/* =====================================================================
+   SEARCH — state + county name autocomplete in the sidebar
+===================================================================== */
+function initSearch() {
+  const input    = document.getElementById('search-input');
+  const results  = document.getElementById('search-results');
+  const clearBtn = document.getElementById('search-clear');
+
+  // Build initial index from state features
+  stateFeatures.forEach(f => {
+    const fips = String(f.id).padStart(2, '0');
+    const s    = STATE_BY_FIPS[fips];
+    if (s) searchIndex.push({ type: 'state', name: s.name, abbr: s.abbr, fips, feature: f });
+  });
+
+  function query(q) {
+    const lq = q.toLowerCase();
+    return searchIndex
+      .filter(item => {
+        const n = item.name.toLowerCase();
+        const a = (item.abbr || '').toLowerCase();
+        return n.includes(lq) || a.startsWith(lq);
+      })
+      .slice(0, 14);
+  }
+
+  function renderResults(matches) {
+    results.innerHTML = '';
+    if (matches.length === 0) { results.classList.add('hidden'); return; }
+    matches.forEach(item => {
+      const rate = item.type === 'state'
+        ? stateRates[item.fips]?.rate
+        : countyRates[item.fips]?.rate;
+      const div  = document.createElement('div');
+      div.className = 'search-item';
+      div.innerHTML = `
+        <span class="search-item-name">${item.name}</span>
+        ${rate != null ? `<span class="search-item-rate">${rate.toFixed(1)}%</span>` : ''}
+        <span class="search-item-type">${item.type}</span>
+      `;
+      div.addEventListener('click', () => {
+        input.value = item.name;
+        results.classList.add('hidden');
+        clearBtn.classList.remove('hidden');
+        flyToItem(item.fips, item.type);
+      });
+      results.appendChild(div);
+    });
+    results.classList.remove('hidden');
+  }
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearBtn.classList.toggle('hidden', q === '');
+    if (q.length < 1) { results.classList.add('hidden'); return; }
+    renderResults(query(q));
+  });
+
+  clearBtn.addEventListener('click', () => {
+    input.value = '';
+    results.classList.add('hidden');
+    clearBtn.classList.add('hidden');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-wrap')) results.classList.add('hidden');
+  });
+
+  // Called after county data loads to extend the search index
+  return {
+    addCounties() {
+      countyFeatures.forEach(f => {
+        const fips = String(f.id).padStart(5, '0');
+        const info = countyRates[fips];
+        if (!info) return;
+        const stAbbr = STATE_BY_FIPS[fips.slice(0, 2)]?.abbr || '';
+        searchIndex.push({
+          type:    'county',
+          name:    `${info.name}, ${stAbbr}`,
+          abbr:    stAbbr,
+          fips,
+          feature: f,
+        });
+      });
+    },
+  };
+}
+
+/* =====================================================================
+   MAP CONTROLS — zoom buttons + reset
+===================================================================== */
+function initMapControls() {
+  document.getElementById('btn-zoom-in').addEventListener('click',  () => map.zoomIn());
+  document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
+  document.getElementById('btn-reset').addEventListener('click',    () => {
+    map.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, duration: 900 });
+  });
+}
+
+/* =====================================================================
+   RANK TABS — highest / lowest toggle
+===================================================================== */
+function initRankTabs() {
+  document.querySelectorAll('.rank-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.rank-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      rankDir = btn.dataset.dir;
+      renderRankings();
+    });
+  });
+}
+
+/* =====================================================================
+   MOBILE SIDEBAR TOGGLE
+===================================================================== */
+function initSidebarToggle() {
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('sidebar-toggle').addEventListener('click', () =>
+    sidebar.classList.toggle('open'));
+  document.getElementById('sidebar-close').addEventListener('click', () =>
+    sidebar.classList.remove('open'));
+}
+
+/* =====================================================================
+   ERROR BANNER — auto-dismisses after 7 seconds
+===================================================================== */
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  document.getElementById('error-text').textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 7000);
+}
+
+/* =====================================================================
+   MAIN INIT
+===================================================================== */
 async function init() {
-  const loading = document.getElementById('loading');
-  const content = document.getElementById('content');
-  const errBanner = document.getElementById('error-banner');
-  const errText   = document.getElementById('error-text');
+  setProgress(5, 'Loading boundaries…');
 
-  // Load US TopoJSON in parallel with BLS API attempt
-  const [usGeo, blsResult] = await Promise.all([
-    fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json').then(r => r.json()),
-    fetchBLSData().catch(err => ({ error: err.message })),
+  // Fetch boundaries and state rate data in parallel
+  const [stateTopo, countyTopo, blsResult] = await Promise.all([
+    fetch(TOPO_STATES).then(r => r.json()),
+    fetch(TOPO_COUNTIES).then(r => r.json()),
+    fetchBLSStateRates().catch(err => ({ _error: err.message })),
   ]);
 
-  let rateData;
-  if (blsResult.error) {
-    console.warn('BLS API fetch failed:', blsResult.error, '— using fallback data.');
-    errText.textContent = `Live BLS data unavailable (${blsResult.error}).`;
-    errBanner.classList.remove('hidden');
-    rateData = FALLBACK;
+  setProgress(45, 'Processing data…');
+
+  // Merge BLS result with fallback (fallback fills any gaps)
+  const fallbackObj = Object.fromEntries(
+    Object.entries(FALLBACK_RATES).map(([fips, rate]) => [fips, { rate, period: '2024 Annual Avg' }])
+  );
+  if (blsResult._error) {
+    showError(`Live BLS data unavailable — showing 2024 annual averages.`);
+    stateRates = fallbackObj;
   } else {
-    // Merge BLS result with fallback for any missing states
-    rateData = { ...FALLBACK, ...blsResult };
+    stateRates = { ...fallbackObj, ...blsResult };
   }
 
-  loading.classList.add('hidden');
-  content.classList.remove('hidden');
-
-  renderMap(usGeo, rateData);
-
-  // Re-render on resize so the map stays proportional
-  let resizeTimer;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => renderMap(usGeo, rateData), 150);
+  // Build state GeoJSON — attach rate + grayscale color as feature properties
+  stateFeatures = topojson.feature(stateTopo, stateTopo.objects.states).features;
+  stateFeatures.forEach(f => {
+    const fips = String(f.id).padStart(2, '0');
+    const rate = stateRates[fips]?.rate ?? null;
+    f.properties = { fips, rate, color: rateToColor(rate) };
   });
+
+  // Build county GeoJSON geometry only — rates added after Census fetch
+  countyFeatures = topojson.feature(countyTopo, countyTopo.objects.counties).features;
+  countyFeatures.forEach(f => {
+    f.properties = { fips: String(f.id).padStart(5, '0'), rate: null, color: DIM_COLOR };
+  });
+
+  setProgress(62, 'Initialising map…');
+
+  // Init MapLibre
+  map = new maplibregl.Map({
+    container: 'map',
+    style:     MAP_STYLE,
+    center:    MAP_CENTER,
+    zoom:      MAP_ZOOM,
+    maxZoom:   MAP_MAX_ZOOM,
+    attributionControl: false,
+  });
+
+  map.on('load', async () => {
+    setProgress(75, 'Adding layers…');
+    addMapLayers();
+    setupInteractions();
+
+    const search = initSearch();
+    initFilter();
+    initRankTabs();
+    initMapControls();
+    initSidebarToggle();
+    renderRankings();
+
+    hideLoading();
+
+    // Fetch county data in the background — map is already usable at state level
+    setProgress(88, 'Fetching county data…');
+    fetchCensusCountyRates()
+      .then(rates => {
+        countyRates = rates;
+
+        // Attach rates to county features
+        countyFeatures.forEach(f => {
+          const fips = String(f.id).padStart(5, '0');
+          const info = rates[fips];
+          const rate = info?.rate ?? null;
+          f.properties = {
+            fips,
+            rate,
+            color:     rateToColor(rate),
+            stateFips: fips.slice(0, 2),
+          };
+        });
+
+        // Push county data to map source
+        map.getSource('counties').setData({
+          type: 'FeatureCollection',
+          features: countyFeatures,
+        });
+
+        countyDataLoaded = true;
+        search.addCounties();
+        renderRankings();
+        setProgress(100);
+      })
+      .catch(err => {
+        console.warn('County data fetch failed:', err);
+        showError('County-level data unavailable. Showing state data only.');
+      });
+  });
+
+  map.on('error', e => console.warn('MapLibre error:', e.error?.message));
 }
 
 init();
