@@ -957,11 +957,9 @@ function initSidebarToggle() {
   const sidebar = document.getElementById('sidebar');
   document.getElementById('sidebar-toggle').addEventListener('click', () => {
     sidebar.classList.toggle('open');
-    applyLayout(); // re-sync the JS-driven transform
   });
   document.getElementById('sidebar-close').addEventListener('click', () => {
     sidebar.classList.remove('open');
-    applyLayout();
   });
 }
 
@@ -973,48 +971,29 @@ function showError(msg) {
 }
 
 /* =====================================================================
-   LAYOUT — driven entirely by JS inline styles so CSS failures can't
-   break the map canvas dimensions. Inline styles have highest specificity
-   and are applied synchronously before any async work or MapLibre init.
-   Called once immediately, then again on every window resize.
+   LAYOUT — CSS flex handles sidebar + map-container positioning.
+   JS only gives #map explicit pixel dimensions (MapLibre needs a
+   non-zero canvas at init time) and resizes on window resize.
 ===================================================================== */
-const SIDEBAR_W = 290; // px — keep in sync with --sidebar-w CSS var
+const SIDEBAR_W = 290; // keep in sync with CSS width on #sidebar
 
 function applyLayout() {
-  const vw       = window.innerWidth;
-  const vh       = window.innerHeight;
-  const mobile   = vw <= 768;
-  const mapLeft  = mobile ? 0 : SIDEBAR_W;
-  const mapW     = vw - mapLeft;
+  const vw     = window.innerWidth;
+  const vh     = window.innerHeight;
+  const mobile = vw <= 768;
+  const mapW   = mobile ? vw : (vw - SIDEBAR_W);
 
+  // Loading overlay — covers everything during data fetch
   setStyle('loading-screen', {
     position: 'fixed', top: '0', left: '0',
     width: '100%', height: '100%', zIndex: '9999',
   });
 
-  setStyle('app', {
-    position: 'fixed', top: '0', left: '0',
-    width: vw + 'px', height: vh + 'px',
-  });
-
-  setStyle('sidebar', {
-    position: 'fixed', top: '0', left: '0',
-    width: SIDEBAR_W + 'px', height: vh + 'px',
-    overflow: 'hidden', zIndex: '10',
-    transform: mobile
-      ? (document.getElementById('sidebar').classList.contains('open')
-          ? 'translateX(0)' : 'translateX(-100%)')
-      : 'none',
-  });
-
-  setStyle('map-container', {
-    position: 'fixed', top: '0', left: mapLeft + 'px',
-    width: mapW + 'px', height: vh + 'px', overflow: 'hidden',
-  });
-
   // Give #map explicit pixel dimensions — MapLibre requires a non-zero canvas
   setStyle('map', {
-    display: 'block', width: mapW + 'px', height: vh + 'px',
+    display: 'block',
+    width:  mapW + 'px',
+    height: vh   + 'px',
   });
 
   if (map) map.resize();

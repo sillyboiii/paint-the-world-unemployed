@@ -5,7 +5,306 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>US Unemployment Map</title>
   <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <style>
+    /* ── Reset ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --glass:   rgba(255, 255, 255, 0.07);
+      --glass-2: rgba(255, 255, 255, 0.05);
+      --glass-3: rgba(255, 255, 255, 0.09);
+      --border:  rgba(255, 255, 255, 0.10);
+      --blur:    blur(40px) saturate(200%);
+      --text:    rgba(255, 255, 255, 0.85);
+      --muted:   rgba(255, 255, 255, 0.35);
+      --white:   #ffffff;
+      --r:       10px;
+      --r-sm:    6px;
+    }
+
+    html, body {
+      height: 100%; width: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    }
+
+    a { color: var(--muted); text-decoration: none; }
+    a:hover { color: var(--text); }
+
+    /* ── Loading ─────────────────────────────────────────────── */
+    #loading-screen {
+      display: flex; align-items: center; justify-content: center;
+      background: #000; transition: opacity 0.6s;
+    }
+    #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+    .loader-content { text-align: center; color: var(--text); }
+    .loader-spinner {
+      width: 28px; height: 28px;
+      border: 1.5px solid rgba(255,255,255,0.12);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-title  { font-size: 0.92rem; font-weight: 600; margin-bottom: 5px; }
+    .loader-status { font-size: 0.68rem; color: var(--muted); margin-bottom: 12px; }
+    .loader-bar    { width: 130px; height: 1px; background: rgba(255,255,255,0.08); margin: 0 auto; }
+    #loader-progress { height: 100%; width: 0; background: #fff; transition: width .3s; }
+
+    /* ── App shell ───────────────────────────────────────────── */
+    #app {
+      position: fixed; inset: 0;
+      display: flex;
+    }
+
+    /* ── Map container ───────────────────────────────────────── */
+    #map-container {
+      position: relative;
+      flex: 1;
+    }
+    #map { position: absolute; inset: 0; }
+
+    /* ── Sidebar — frosted glass ─────────────────────────────── */
+    #sidebar {
+      position: relative;
+      width: 290px;
+      flex-shrink: 0;
+      background: var(--glass);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+      z-index: 10;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 22px 18px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
+      display: flex; align-items: flex-start; justify-content: space-between;
+    }
+    .sidebar-header h1 {
+      font-size: 0.98rem; font-weight: 600;
+      letter-spacing: -0.3px; color: var(--white);
+      margin-bottom: 2px;
+    }
+    .sidebar-sub { font-size: 0.63rem; color: var(--muted); }
+
+    #sidebar-close {
+      display: none;
+      background: none; border: none;
+      color: var(--muted); cursor: pointer;
+      font-size: 0.85rem; padding: 2px 4px; line-height: 1;
+    }
+    #sidebar-close:hover { color: var(--text); }
+
+    .sidebar-section {
+      padding: 13px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+
+    /* Rankings scrolls */
+    .rankings-section {
+      flex: 1; overflow-y: auto; min-height: 0;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.08) transparent;
+    }
+    .rankings-section::-webkit-scrollbar { width: 3px; }
+    .rankings-section::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+    .sidebar-footer {
+      padding: 10px 18px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.6rem; color: var(--muted); flex-shrink: 0;
+    }
+
+    .section-label {
+      font-size: 0.58rem;
+      text-transform: uppercase; letter-spacing: 1.2px;
+      color: var(--muted); margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    /* ── Search ──────────────────────────────────────────────── */
+    .search-wrap { position: relative; }
+
+    #search-input {
+      width: 100%;
+      background: var(--glass-2);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--r-sm);
+      color: var(--white);
+      padding: 8px 28px 8px 11px;
+      font-size: 0.79rem; font-family: inherit;
+      outline: none;
+      transition: border-color .15s, background .15s;
+    }
+    #search-input::placeholder { color: var(--muted); }
+    #search-input:focus {
+      border-color: rgba(255,255,255,0.2);
+      background: var(--glass-3);
+    }
+    #search-clear {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 0.62rem; padding: 2px; line-height: 1;
+    }
+    #search-clear:hover { color: var(--text); }
+
+    #search-results {
+      position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+      background: rgba(10,10,16,0.92);
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--r); z-index: 500;
+      max-height: 200px; overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    }
+    .search-item {
+      padding: 8px 12px; cursor: pointer; font-size: 0.78rem;
+      display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--text);
+    }
+    .search-item:last-child { border-bottom: none; }
+    .search-item:hover { background: rgba(255,255,255,0.06); }
+    .search-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .search-item-rate { font-size: 0.74rem; font-weight: 600; color: var(--white); }
+    .search-item-type { font-size: 0.56rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+
+    /* ── Detail card ─────────────────────────────────────────── */
+    .placeholder-text { color: var(--muted); font-size: 0.75rem; }
+
+    .detail-type   { font-size: 0.56rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 3px; }
+    .detail-name   { font-size: 0.93rem; font-weight: 600; line-height: 1.25; margin-bottom: 8px; }
+    .detail-rate-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+    .detail-rate   { font-size: 2.4rem; font-weight: 700; letter-spacing: -2px; line-height: 1; color: var(--white); }
+    .detail-rank   { font-size: 0.66rem; color: var(--muted); }
+    .detail-period { font-size: 0.63rem; color: var(--muted); margin-bottom: 10px; }
+    .trend-label   { font-size: 0.56rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 6px; }
+    .trend-loading { font-size: 0.7rem; color: var(--muted); padding: 4px 0; }
+
+    /* ── Filter ──────────────────────────────────────────────── */
+    .filter-row {
+      display: grid; grid-template-columns: 26px 1fr 34px;
+      align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .filter-row:last-child { margin-bottom: 0; }
+    .filter-lbl { font-size: 0.62rem; color: var(--muted); }
+    .filter-val  { font-size: 0.66rem; color: var(--text); text-align: right; }
+    input[type="range"] { width: 100%; accent-color: rgba(255,255,255,0.6); cursor: pointer; }
+
+    .reset-btn {
+      background: var(--glass-2); border: 1px solid rgba(255,255,255,0.09);
+      color: var(--muted); cursor: pointer; font-size: 0.58rem; padding: 2px 7px;
+      border-radius: 4px; font-family: inherit; transition: background .15s;
+    }
+    .reset-btn:hover { color: var(--white); background: var(--glass-3); }
+
+    /* ── Rankings ────────────────────────────────────────────── */
+    .view-badge {
+      font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.8px;
+      color: var(--muted); background: var(--glass-2);
+      padding: 2px 6px; border-radius: 4px;
+    }
+    .rank-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+    .rank-tab {
+      flex: 1; padding: 6px;
+      background: var(--glass-2); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--r-sm); color: var(--muted);
+      cursor: pointer; font-size: 0.68rem; font-family: inherit;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .rank-tab.active { background: var(--glass-3); color: var(--white); border-color: rgba(255,255,255,0.18); }
+    .rank-tab:hover:not(.active) { background: rgba(255,255,255,0.07); }
+
+    .rank-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 4px; cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      border-radius: 5px; transition: background .1s;
+    }
+    .rank-item:last-child { border-bottom: none; }
+    .rank-item:hover { background: rgba(255,255,255,0.06); }
+    .rank-num    { font-size: 0.58rem; color: var(--muted); width: 14px; text-align: right; flex-shrink: 0; }
+    .rank-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.1); }
+    .rank-name   { flex: 1; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rank-rate   { font-size: 0.75rem; font-weight: 600; flex-shrink: 0; color: var(--white); }
+
+    /* ── Tooltip ─────────────────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      background: rgba(10, 10, 18, 0.75);
+      backdrop-filter: blur(32px) saturate(180%);
+      -webkit-backdrop-filter: blur(32px) saturate(180%);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px; padding: 12px 16px;
+      pointer-events: none; z-index: 600; min-width: 140px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+    }
+    .tt-name { font-size: 0.74rem; color: var(--muted); margin-bottom: 2px; }
+    .tt-rate { font-size: 1.75rem; font-weight: 700; letter-spacing: -1.5px; line-height: 1; color: var(--white); margin-bottom: 2px; }
+    .tt-meta { font-size: 0.6rem; color: var(--muted); }
+
+    /* ── Map controls ────────────────────────────────────────── */
+    #map-controls {
+      position: absolute; bottom: 20px; right: 16px;
+      display: flex; flex-direction: column; gap: 3px; z-index: 10;
+    }
+    #map-controls button {
+      width: 32px; height: 32px;
+      background: rgba(10,10,18,0.72);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 9px; color: rgba(255,255,255,0.7);
+      cursor: pointer; font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s, color .15s; line-height: 1;
+    }
+    #map-controls button:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+    /* ── MapLibre overrides ──────────────────────────────────── */
+    .maplibregl-ctrl-bottom-right { display: none; }
+    .maplibregl-ctrl-attrib       { display: none; }
+
+    /* ── Mobile toggle ───────────────────────────────────────── */
+    #sidebar-toggle {
+      display: none;
+      position: fixed; bottom: 20px; left: 20px; z-index: 400;
+      width: 40px; height: 40px;
+      background: rgba(10,10,18,0.82);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 50%; color: var(--text); font-size: 1rem;
+      cursor: pointer; align-items: center; justify-content: center;
+    }
+
+    /* ── Utilities ───────────────────────────────────────────── */
+    .hidden { display: none !important; }
+
+    /* ── Mobile ──────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      #sidebar {
+        position: fixed !important;
+        left: 0 !important; top: 0 !important;
+        height: 100% !important;
+        transform: translateX(-100%);
+        transition: transform .3s ease;
+        width: 290px !important;
+      }
+      #sidebar.open { transform: translateX(0); }
+      #map-container { width: 100% !important; margin-left: 0 !important; }
+      #sidebar-close  { display: block !important; }
+      #sidebar-toggle { display: flex !important; }
+    }
+  </style>
 </head>
 <body>
 
@@ -102,10 +401,10 @@
       <div class="sidebar-footer">
         <a href="https://www.bls.gov/lau/" target="_blank" rel="noopener">BLS LAUS</a>
         &nbsp;·&nbsp;
-        <a href="https://www.census.gov/programs-surveys/acs/" target="_blank" rel="noopener">Census ACS</a>
+        <a href="https://www.census.gov/programs-surveys/acs/" target="_blank" rel="noopener">Census ACS 5-yr</a>
       </div>
 
-    </aside><!-- /sidebar -->
+    </aside>
 
     <!-- ── Map ───────────────────────────────────────────── -->
     <div id="map-container">
