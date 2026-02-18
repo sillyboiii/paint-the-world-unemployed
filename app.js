@@ -253,17 +253,17 @@ async function fetchStateTrend(fips) {
 }
 
 /* =====================================================================
-   MAP STYLE — Carto dark raster basemap (no API key)
+   MAP STYLE — Carto dark, no labels (labels added on top of choropleth)
 ===================================================================== */
 const MAP_STYLE = {
   version: 8,
   sources: {
-    carto: {
+    basemap: {
       type: 'raster',
       tiles: [
-        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
       attribution:
@@ -271,8 +271,19 @@ const MAP_STYLE = {
         ' &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxzoom: 19,
     },
+    // Labels loaded separately so they can render above the choropleth fills
+    'basemap-labels': {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
+      ],
+      tileSize: 256,
+      maxzoom: 19,
+    },
   },
-  layers: [{ id: 'carto-dark', type: 'raster', source: 'carto' }],
+  layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
 };
 
 /* =====================================================================
@@ -397,7 +408,7 @@ function addMapLayers() {
     },
   });
 
-  // Selection outline
+  // County selection outline
   map.addLayer({
     id: 'counties-selected',
     type: 'line',
@@ -413,6 +424,9 @@ function addMapLayers() {
       ],
     },
   });
+
+  // Place name labels — on top of all choropleth fills so they're always readable
+  map.addLayer({ id: 'basemap-labels', type: 'raster', source: 'basemap-labels' });
 }
 
 /* =====================================================================
@@ -527,11 +541,11 @@ function setupInteractions() {
     selectFeature(fips, 'county');
   });
 
-  // ── Zoom → update badges & rankings ──────────────────────────────
+  // ── Zoom → update rankings & view badge ──────────────────────────
   map.on('zoom', () => {
     const isCounty = map.getZoom() >= ZOOM_CO_FULL && countyDataLoaded;
-    document.getElementById('zoom-badge').textContent = isCounty ? 'Counties' : 'States';
-    document.getElementById('view-badge').textContent = isCounty ? 'Counties' : 'States';
+    const vb = document.getElementById('view-badge');
+    if (vb) vb.textContent = isCounty ? 'Counties' : 'States';
     renderRankings();
   });
 }
@@ -915,14 +929,11 @@ function initSearch() {
 }
 
 /* =====================================================================
-   MAP CONTROLS — zoom buttons + reset
+   MAP CONTROLS — zoom in / zoom out
 ===================================================================== */
 function initMapControls() {
   document.getElementById('btn-zoom-in').addEventListener('click',  () => map.zoomIn());
   document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
-  document.getElementById('btn-reset').addEventListener('click',    () => {
-    map.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, duration: 900 });
-  });
 }
 
 /* =====================================================================
@@ -955,13 +966,10 @@ function initSidebarToggle() {
 }
 
 /* =====================================================================
-   ERROR BANNER — auto-dismisses after 7 seconds
+   ERROR — logged to console (banner element removed from UI)
 ===================================================================== */
 function showError(msg) {
-  const el = document.getElementById('error-banner');
-  document.getElementById('error-text').textContent = msg;
-  el.classList.remove('hidden');
-  setTimeout(() => el.classList.add('hidden'), 7000);
+  console.warn('Map error:', msg);
 }
 
 /* =====================================================================

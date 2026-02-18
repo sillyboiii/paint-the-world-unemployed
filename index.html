@@ -13,18 +13,18 @@
   <div id="loading-screen">
     <div class="loader-content">
       <div class="loader-spinner"></div>
-      <div class="loader-title">US Unemployment Map</div>
-      <div class="loader-status" id="loader-status">Loading map data…</div>
+      <div class="loader-title">Unemployment Map</div>
+      <div class="loader-status" id="loader-status">Loading…</div>
       <div class="loader-bar"><div id="loader-progress"></div></div>
     </div>
   </div>
 
   <div id="app">
 
-    <!-- Mobile sidebar toggle -->
-    <button id="sidebar-toggle" aria-label="Open sidebar">☰</button>
+    <!-- Mobile open button -->
+    <button id="sidebar-toggle" aria-label="Open menu">☰</button>
 
-    <!-- ===== SIDEBAR ===== -->
+    <!-- ── Sidebar ────────────────────────────────────────── -->
     <aside id="sidebar">
 
       <div class="sidebar-header">
@@ -32,29 +32,29 @@
           <h1>US Unemployment</h1>
           <p class="sidebar-sub">BLS LAUS · Census ACS</p>
         </div>
-        <button id="sidebar-close" aria-label="Close sidebar">✕</button>
+        <button id="sidebar-close" aria-label="Close">✕</button>
       </div>
 
       <!-- Search -->
       <div class="sidebar-section">
-        <div class="section-label">Search</div>
         <div class="search-wrap">
-          <input type="text" id="search-input" placeholder="State or county…"
+          <input type="text" id="search-input"
+                 placeholder="Search state or county…"
                  autocomplete="off" spellcheck="false">
-          <button id="search-clear" class="hidden" aria-label="Clear search">✕</button>
+          <button id="search-clear" class="hidden" aria-label="Clear">✕</button>
           <div id="search-results" class="hidden"></div>
         </div>
       </div>
 
-      <!-- Selected area detail -->
+      <!-- Selected area -->
       <div class="sidebar-section">
-        <div class="section-label">Selected Area</div>
+        <div class="section-label">Selected</div>
         <div id="detail-placeholder" class="placeholder-text">
-          Hover or click a state&nbsp;/ county
+          Click a state or county
         </div>
         <div id="detail-card" class="hidden">
-          <div class="detail-type" id="detail-type"></div>
-          <div class="detail-name" id="detail-name"></div>
+          <div class="detail-type"  id="detail-type"></div>
+          <div class="detail-name"  id="detail-name"></div>
           <div class="detail-rate-row">
             <span class="detail-rate" id="detail-rate"></span>
             <span class="detail-rank" id="detail-rank"></span>
@@ -62,7 +62,7 @@
           <div class="detail-period" id="detail-period"></div>
           <div id="trend-loading" class="hidden trend-loading">Loading trend…</div>
           <div id="trend-wrap" class="hidden">
-            <div class="trend-label">Annual Unemployment Trend</div>
+            <div class="trend-label">Annual trend</div>
             <svg id="trend-chart"></svg>
           </div>
         </div>
@@ -71,18 +71,18 @@
       <!-- Filter -->
       <div class="sidebar-section">
         <div class="section-label">
-          Filter by Rate
+          Filter by rate
           <button id="filter-reset" class="reset-btn">Reset</button>
         </div>
         <div class="filter-row">
           <span class="filter-lbl">Min</span>
           <input type="range" id="filter-min" min="0" max="20" step="0.5" value="0">
-          <span class="filter-val" id="filter-min-val">0.0%</span>
+          <span class="filter-val" id="filter-min-val">0%</span>
         </div>
         <div class="filter-row">
           <span class="filter-lbl">Max</span>
           <input type="range" id="filter-max" min="0" max="20" step="0.5" value="20">
-          <span class="filter-val" id="filter-max-val">20.0%</span>
+          <span class="filter-val" id="filter-max-val">20%</span>
         </div>
       </div>
 
@@ -94,7 +94,7 @@
         </div>
         <div class="rank-tabs">
           <button class="rank-tab active" data-dir="high">▲ Highest</button>
-          <button class="rank-tab" data-dir="low">▼ Lowest</button>
+          <button class="rank-tab"        data-dir="low">▼ Lowest</button>
         </div>
         <div id="rankings-list"></div>
       </div>
@@ -102,50 +102,30 @@
       <div class="sidebar-footer">
         <a href="https://www.bls.gov/lau/" target="_blank" rel="noopener">BLS LAUS</a>
         &nbsp;·&nbsp;
-        <a href="https://www.census.gov/programs-surveys/acs/" target="_blank" rel="noopener">Census ACS 5-yr</a>
+        <a href="https://www.census.gov/programs-surveys/acs/" target="_blank" rel="noopener">Census ACS</a>
       </div>
-    </aside>
 
-    <!-- ===== MAP ===== -->
+    </aside><!-- /sidebar -->
+
+    <!-- ── Map ───────────────────────────────────────────── -->
     <div id="map-container">
       <div id="map"></div>
 
-      <!-- Tooltip -->
+      <!-- Hover tooltip -->
       <div id="tooltip" class="hidden">
         <div class="tt-name" id="tt-name"></div>
         <div class="tt-rate" id="tt-rate"></div>
         <div class="tt-meta" id="tt-meta"></div>
       </div>
 
-      <!-- Map controls -->
+      <!-- Minimal zoom controls -->
       <div id="map-controls">
         <button id="btn-zoom-in"  title="Zoom in">+</button>
         <button id="btn-zoom-out" title="Zoom out">−</button>
-        <button id="btn-reset"    title="Reset view">⌂</button>
-      </div>
-
-      <!-- Error banner -->
-      <div id="error-banner" class="hidden">
-        <span id="error-text"></span>
-      </div>
-
-      <!-- Zoom / layer badge -->
-      <div id="zoom-badge">States</div>
-
-      <!-- Legend -->
-      <div id="legend">
-        <div class="legend-title">Unemployment Rate</div>
-        <div class="legend-gradient"></div>
-        <div class="legend-labels">
-          <span>0%</span>
-          <span>50%</span>
-          <span>100%</span>
-        </div>
-        <div class="legend-note">0% → black &nbsp;·&nbsp; 100% → white</div>
       </div>
     </div>
 
-  </div><!-- #app -->
+  </div><!-- /app -->
 
   <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
