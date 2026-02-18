@@ -16,12 +16,15 @@
 
 html, body {
   height: 100%;
+  width: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
 a { color: var(--muted); text-decoration: none; }
@@ -32,7 +35,7 @@ a:hover { color: var(--text); }
 ===================================================================== */
 #loading-screen {
   position: fixed;
-  inset: 0;
+  top: 0; left: 0; width: 100%; height: 100%;
   background: #000;
   z-index: 9999;
   display: flex;
@@ -77,25 +80,27 @@ a:hover { color: var(--text); }
 }
 
 /* =====================================================================
-   App shell — sidebar + map side by side
+   App shell — sidebar pinned left, map fills the rest
+   Uses absolute positioning so map always has explicit pixel dimensions
+   (flexbox height can fail to compute in some environments)
 ===================================================================== */
 #app {
-  display: flex;
-  height: 100vh;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
 }
 
 /* =====================================================================
    Sidebar
 ===================================================================== */
 #sidebar {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
   width: var(--sidebar-w);
-  height: 100%;
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  flex-shrink: 0;
   z-index: 10;
 }
 
@@ -390,17 +395,17 @@ input[type="range"] {
 }
 
 /* =====================================================================
-   Map container
+   Map container — explicit pixel bounds so MapLibre always has size
 ===================================================================== */
 #map-container {
-  flex: 1;
-  position: relative;
+  position: absolute;
+  top: 0; left: var(--sidebar-w); right: 0; bottom: 0;
   overflow: hidden;
 }
 
 #map {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
 }
 
 /* Suppress MapLibre default controls */
@@ -548,7 +553,7 @@ input[type="range"] {
   position: fixed;
   bottom: 18px;
   left: 18px;
-  z-index: 100;
+  z-index: 300;
   width: 42px;
   height: 42px;
   background: rgba(0,0,0,0.9);
@@ -572,8 +577,6 @@ input[type="range"] {
 ===================================================================== */
 @media (max-width: 768px) {
   #sidebar {
-    position: fixed;
-    left: 0; top: 0; bottom: 0;
     z-index: 200;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
@@ -581,5 +584,5 @@ input[type="range"] {
   }
   #sidebar.open { transform: translateX(0); }
   #sidebar-toggle { display: flex; }
-  #map-container { width: 100%; }
+  #map-container { left: 0; } /* full width — sidebar overlays on mobile */
 }

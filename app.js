@@ -1013,6 +1013,9 @@ async function init() {
   });
 
   map.on('load', async () => {
+    // Force the map to recompute its canvas dimensions after CSS layout settles
+    map.resize();
+
     setProgress(75, 'Adding layers…');
     addMapLayers();
     setupInteractions();
@@ -1063,6 +1066,9 @@ async function init() {
   });
 
   map.on('error', e => console.warn('MapLibre error:', e.error?.message));
+
+  // Keep map canvas sized correctly when the browser window is resized
+  window.addEventListener('resize', () => map && map.resize());
 }
 
 init();
