@@ -978,9 +978,11 @@ function initSidebarToggle() {
   const sidebar = document.getElementById('sidebar');
   document.getElementById('sidebar-toggle').addEventListener('click', () => {
     sidebar.classList.toggle('open');
+    applyLayout();
   });
   document.getElementById('sidebar-close').addEventListener('click', () => {
     sidebar.classList.remove('open');
+    applyLayout();
   });
 }
 
@@ -992,12 +994,11 @@ function showError(msg) {
 }
 
 /* =====================================================================
-   LAYOUT — CSS flex handles sidebar + map-container positioning.
-   JS only gives #map explicit pixel dimensions (MapLibre needs a
-   non-zero canvas at init time) and resizes on window resize.
+   LAYOUT — fully JS-driven so it is cache-proof and always correct.
+   Inline styles from JS override any stale CSS the browser may have cached.
 ===================================================================== */
-const SIDEBAR_W = 290; // keep in sync with CSS width on #sidebar
-const BANNER_H  = 44;  // keep in sync with CSS height on #banner
+const SIDEBAR_W = 290;
+const BANNER_H  = 44;
 
 function applyLayout() {
   const vw     = window.innerWidth;
@@ -1006,17 +1007,59 @@ function applyLayout() {
   const mapW   = mobile ? vw : (vw - SIDEBAR_W);
   const mapH   = vh - BANNER_H;
 
-  // Loading overlay — covers everything during data fetch
+  // Loading overlay
   setStyle('loading-screen', {
     position: 'fixed', top: '0', left: '0',
     width: '100%', height: '100%', zIndex: '9999',
   });
 
-  // Give #map explicit pixel dimensions — MapLibre requires a non-zero canvas
+  // App shell: full-viewport column flex
+  setStyle('app', {
+    position: 'fixed', top: '0', left: '0',
+    width: vw + 'px', height: vh + 'px',
+    display: 'flex', flexDirection: 'column',
+  });
+
+  // Banner: fixed-height top strip (do not touch visual styles)
+  setStyle('banner', {
+    width: '100%', height: BANNER_H + 'px', flexShrink: '0',
+  });
+
+  // Main row that holds sidebar + map
+  setStyle('main', {
+    flex: '1', display: 'flex', overflow: 'hidden', minHeight: '0',
+  });
+
+  // Sidebar: part of flex row on desktop, fixed overlay on mobile
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) {
+    if (mobile) {
+      Object.assign(sidebar.style, {
+        position: 'fixed', top: BANNER_H + 'px', left: '0',
+        width: SIDEBAR_W + 'px', height: mapH + 'px',
+        flexShrink: '0', overflow: 'hidden', zIndex: '300',
+        transform: sidebar.classList.contains('open') ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform .3s ease',
+      });
+    } else {
+      Object.assign(sidebar.style, {
+        position: 'relative', top: '', left: '',
+        width: SIDEBAR_W + 'px', height: mapH + 'px',
+        flexShrink: '0', overflow: 'hidden',
+        zIndex: '', transform: 'none', transition: '',
+      });
+    }
+  }
+
+  // Map container: takes remaining width in the flex row
+  setStyle('map-container', {
+    position: 'relative', flex: '1', overflow: 'hidden',
+    width: mapW + 'px', height: mapH + 'px',
+  });
+
+  // MapLibre canvas needs explicit pixel dimensions
   setStyle('map', {
-    display: 'block',
-    width:  mapW + 'px',
-    height: mapH + 'px',
+    display: 'block', width: mapW + 'px', height: mapH + 'px',
   });
 
   if (map) map.resize();
