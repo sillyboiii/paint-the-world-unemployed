@@ -97,17 +97,38 @@ const FALLBACK_RATES = {
 };
 
 /* =====================================================================
-   COLOR: 0% unemployment = #000000 (black), 100% = #ffffff (white)
-   Linear grayscale. Typical rates 2–10% → very dark grays.
+   COLOR — vivid 6-stop ramp, always visible on dark basemap.
+   Maps 0→15% unemployment to cream→yellow→orange→red→crimson.
+   Typical US range (2–8%) lands in the yellow-orange band where
+   small differences are immediately readable.
 ===================================================================== */
+const RATE_STOPS = [
+  { v: 0,  r: 240, g: 232, b: 210 },  // warm cream  (barely unemployed)
+  { v: 3,  r: 245, g: 200, b: 60  },  // bright amber
+  { v: 5,  r: 242, g: 130, b: 30  },  // orange
+  { v: 8,  r: 215, g: 48,  b: 42  },  // red
+  { v: 11, r: 168, g: 20,  b: 50  },  // deep red
+  { v: 15, r: 110, g: 10,  b: 35  },  // dark crimson
+];
+
 function rateToColor(rate) {
-  if (rate === null || rate === undefined || !isFinite(rate)) return '#111'; // no data
-  const v = Math.round(Math.min(Math.max(rate, 0), 100) * 2.55);
-  const h = v.toString(16).padStart(2, '0');
-  return `#${h}${h}${h}`;
+  if (rate === null || rate === undefined || !isFinite(rate)) return '#0d0d18';
+  const r = Math.max(0, Math.min(rate, 15));
+  for (let i = 0; i < RATE_STOPS.length - 1; i++) {
+    const lo = RATE_STOPS[i], hi = RATE_STOPS[i + 1];
+    if (r >= lo.v && r <= hi.v) {
+      const t = (r - lo.v) / (hi.v - lo.v);
+      const R = Math.round(lo.r + t * (hi.r - lo.r));
+      const G = Math.round(lo.g + t * (hi.g - lo.g));
+      const B = Math.round(lo.b + t * (hi.b - lo.b));
+      return `rgb(${R},${G},${B})`;
+    }
+  }
+  const last = RATE_STOPS[RATE_STOPS.length - 1];
+  return `rgb(${last.r},${last.g},${last.b})`;
 }
 
-// "dimmed" color for filtered-out areas: a dim blue-tinted dark
+// Filtered-out areas: very dark neutral
 const DIM_COLOR = '#0a0a14';
 
 /* =====================================================================
@@ -976,12 +997,14 @@ function showError(msg) {
    non-zero canvas at init time) and resizes on window resize.
 ===================================================================== */
 const SIDEBAR_W = 290; // keep in sync with CSS width on #sidebar
+const BANNER_H  = 44;  // keep in sync with CSS height on #banner
 
 function applyLayout() {
   const vw     = window.innerWidth;
   const vh     = window.innerHeight;
   const mobile = vw <= 768;
   const mapW   = mobile ? vw : (vw - SIDEBAR_W);
+  const mapH   = vh - BANNER_H;
 
   // Loading overlay — covers everything during data fetch
   setStyle('loading-screen', {
@@ -993,7 +1016,7 @@ function applyLayout() {
   setStyle('map', {
     display: 'block',
     width:  mapW + 'px',
-    height: vh   + 'px',
+    height: mapH + 'px',
   });
 
   if (map) map.resize();

@@ -20,6 +20,7 @@
       --white:   #ffffff;
       --r:       10px;
       --r-sm:    6px;
+      --banner:  44px;
     }
 
     html, body {
@@ -53,22 +54,116 @@
     .loader-bar    { width: 130px; height: 1px; background: rgba(255,255,255,0.08); margin: 0 auto; }
     #loader-progress { height: 100%; width: 0; background: #fff; transition: width .3s; }
 
-    /* ── App shell ───────────────────────────────────────────── */
+    /* ── App shell — column: banner on top, main below ───────── */
     #app {
       position: fixed; inset: 0;
       display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top banner ──────────────────────────────────────────── */
+    #banner {
+      height: var(--banner);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+      z-index: 20;
+    }
+
+    /* Logo sits inside the banner, in the top-left */
+    .banner-logo {
+      width: 44px;
+      height: var(--banner);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px;
+      border-right: 1px solid rgba(255,255,255,0.08);
+    }
+    .banner-logo img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      /* invert black logo to white for dark background */
+      filter: invert(1) brightness(0.9);
+      opacity: 0.8;
+    }
+
+    /* Marquee track */
+    .banner-marquee {
+      flex: 1;
+      overflow: hidden;
+      /* fade edges */
+      mask-image: linear-gradient(
+        to right,
+        transparent 0px,
+        black 80px,
+        black calc(100% - 80px),
+        transparent 100%
+      );
+      -webkit-mask-image: linear-gradient(
+        to right,
+        transparent 0px,
+        black 80px,
+        black calc(100% - 80px),
+        transparent 100%
+      );
+    }
+
+    .banner-track {
+      display: inline-flex;
+      white-space: nowrap;
+      animation: marquee 40s linear infinite;
+    }
+    .banner-track:hover { animation-play-state: paused; }
+
+    .banner-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 20px;
+      padding: 0 32px;
+      font-size: 0.64rem;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.50);
+    }
+    .banner-dot {
+      display: inline-block;
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      flex-shrink: 0;
+    }
+
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* ── Main row: sidebar + map ─────────────────────────────── */
+    #main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      min-height: 0;
     }
 
     /* ── Map container ───────────────────────────────────────── */
     #map-container {
       position: relative;
       flex: 1;
+      overflow: hidden;
     }
     #map { position: absolute; inset: 0; }
 
     /* ── Sidebar — frosted glass ─────────────────────────────── */
     #sidebar {
-      position: relative;
       width: 290px;
       flex-shrink: 0;
       background: var(--glass);
@@ -85,13 +180,13 @@
     }
 
     .sidebar-header {
-      padding: 22px 18px 16px;
+      padding: 18px 18px 14px;
       border-bottom: 1px solid rgba(255,255,255,0.08);
       flex-shrink: 0;
       display: flex; align-items: flex-start; justify-content: space-between;
     }
     .sidebar-header h1 {
-      font-size: 0.98rem; font-weight: 600;
+      font-size: 0.95rem; font-weight: 600;
       letter-spacing: -0.3px; color: var(--white);
       margin-bottom: 2px;
     }
@@ -135,7 +230,6 @@
 
     /* ── Search ──────────────────────────────────────────────── */
     .search-wrap { position: relative; }
-
     #search-input {
       width: 100%;
       background: var(--glass-2);
@@ -148,17 +242,13 @@
       transition: border-color .15s, background .15s;
     }
     #search-input::placeholder { color: var(--muted); }
-    #search-input:focus {
-      border-color: rgba(255,255,255,0.2);
-      background: var(--glass-3);
-    }
+    #search-input:focus { border-color: rgba(255,255,255,0.2); background: var(--glass-3); }
     #search-clear {
       position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
       background: none; border: none; color: var(--muted);
       cursor: pointer; font-size: 0.62rem; padding: 2px; line-height: 1;
     }
     #search-clear:hover { color: var(--text); }
-
     #search-results {
       position: absolute; top: calc(100% + 6px); left: 0; right: 0;
       background: rgba(10,10,16,0.92);
@@ -181,7 +271,6 @@
 
     /* ── Detail card ─────────────────────────────────────────── */
     .placeholder-text { color: var(--muted); font-size: 0.75rem; }
-
     .detail-type   { font-size: 0.56rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 3px; }
     .detail-name   { font-size: 0.93rem; font-weight: 600; line-height: 1.25; margin-bottom: 8px; }
     .detail-rate-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
@@ -200,7 +289,6 @@
     .filter-lbl { font-size: 0.62rem; color: var(--muted); }
     .filter-val  { font-size: 0.66rem; color: var(--text); text-align: right; }
     input[type="range"] { width: 100%; accent-color: rgba(255,255,255,0.6); cursor: pointer; }
-
     .reset-btn {
       background: var(--glass-2); border: 1px solid rgba(255,255,255,0.09);
       color: var(--muted); cursor: pointer; font-size: 0.58rem; padding: 2px 7px;
@@ -224,7 +312,6 @@
     }
     .rank-tab.active { background: var(--glass-3); color: var(--white); border-color: rgba(255,255,255,0.18); }
     .rank-tab:hover:not(.active) { background: rgba(255,255,255,0.07); }
-
     .rank-item {
       display: flex; align-items: center; gap: 8px;
       padding: 6px 4px; cursor: pointer;
@@ -293,14 +380,13 @@
     @media (max-width: 768px) {
       #sidebar {
         position: fixed !important;
-        left: 0 !important; top: 0 !important;
-        height: 100% !important;
+        left: 0; top: var(--banner);
+        height: calc(100% - var(--banner)) !important;
         transform: translateX(-100%);
         transition: transform .3s ease;
         width: 290px !important;
       }
       #sidebar.open { transform: translateX(0); }
-      #map-container { width: 100% !important; margin-left: 0 !important; }
       #sidebar-close  { display: block !important; }
       #sidebar-toggle { display: flex !important; }
     }
@@ -320,109 +406,138 @@
 
   <div id="app">
 
-    <!-- Mobile open button -->
-    <button id="sidebar-toggle" aria-label="Open menu">☰</button>
-
-    <!-- ── Sidebar ────────────────────────────────────────── -->
-    <aside id="sidebar">
-
-      <div class="sidebar-header">
-        <div>
-          <h1>US Unemployment</h1>
-          <p class="sidebar-sub">BLS LAUS · Census ACS</p>
-        </div>
-        <button id="sidebar-close" aria-label="Close">✕</button>
+    <!-- ── Top banner ─────────────────────────────────────── -->
+    <div id="banner">
+      <div class="banner-logo">
+        <img src="neet-logo.png" alt="NEET logo">
       </div>
-
-      <!-- Search -->
-      <div class="sidebar-section">
-        <div class="search-wrap">
-          <input type="text" id="search-input"
-                 placeholder="Search state or county…"
-                 autocomplete="off" spellcheck="false">
-          <button id="search-clear" class="hidden" aria-label="Clear">✕</button>
-          <div id="search-results" class="hidden"></div>
+      <div class="banner-marquee">
+        <!-- Banner track: text repeated ×12 so the -50% loop is seamless -->
+        <div class="banner-track">
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
+          <span class="banner-item">NOT IN EMPLOYMENT EDUCATION OR TRAINING <span class="banner-dot"></span></span>
         </div>
-      </div>
-
-      <!-- Selected area -->
-      <div class="sidebar-section">
-        <div class="section-label">Selected</div>
-        <div id="detail-placeholder" class="placeholder-text">
-          Click a state or county
-        </div>
-        <div id="detail-card" class="hidden">
-          <div class="detail-type"  id="detail-type"></div>
-          <div class="detail-name"  id="detail-name"></div>
-          <div class="detail-rate-row">
-            <span class="detail-rate" id="detail-rate"></span>
-            <span class="detail-rank" id="detail-rank"></span>
-          </div>
-          <div class="detail-period" id="detail-period"></div>
-          <div id="trend-loading" class="hidden trend-loading">Loading trend…</div>
-          <div id="trend-wrap" class="hidden">
-            <div class="trend-label">Annual trend</div>
-            <svg id="trend-chart"></svg>
-          </div>
-        </div>
-      </div>
-
-      <!-- Filter -->
-      <div class="sidebar-section">
-        <div class="section-label">
-          Filter by rate
-          <button id="filter-reset" class="reset-btn">Reset</button>
-        </div>
-        <div class="filter-row">
-          <span class="filter-lbl">Min</span>
-          <input type="range" id="filter-min" min="0" max="20" step="0.5" value="0">
-          <span class="filter-val" id="filter-min-val">0%</span>
-        </div>
-        <div class="filter-row">
-          <span class="filter-lbl">Max</span>
-          <input type="range" id="filter-max" min="0" max="20" step="0.5" value="20">
-          <span class="filter-val" id="filter-max-val">20%</span>
-        </div>
-      </div>
-
-      <!-- Rankings -->
-      <div class="sidebar-section rankings-section">
-        <div class="section-label">
-          Rankings
-          <span class="view-badge" id="view-badge">States</span>
-        </div>
-        <div class="rank-tabs">
-          <button class="rank-tab active" data-dir="high">▲ Highest</button>
-          <button class="rank-tab"        data-dir="low">▼ Lowest</button>
-        </div>
-        <div id="rankings-list"></div>
-      </div>
-
-      <div class="sidebar-footer">
-        <a href="https://www.bls.gov/lau/" target="_blank" rel="noopener">BLS LAUS</a>
-        &nbsp;·&nbsp;
-        <a href="https://www.census.gov/programs-surveys/acs/" target="_blank" rel="noopener">Census ACS 5-yr</a>
-      </div>
-
-    </aside>
-
-    <!-- ── Map ───────────────────────────────────────────── -->
-    <div id="map-container">
-      <div id="map"></div>
-
-      <!-- Hover tooltip -->
-      <div id="tooltip" class="hidden">
-        <div class="tt-name" id="tt-name"></div>
-        <div class="tt-rate" id="tt-rate"></div>
-        <div class="tt-meta" id="tt-meta"></div>
-      </div>
-
-      <!-- Minimal zoom controls -->
-      <div id="map-controls">
-        <button id="btn-zoom-in"  title="Zoom in">+</button>
-        <button id="btn-zoom-out" title="Zoom out">−</button>
       </div>
     </div>
+
+    <!-- ── Main row: sidebar + map ────────────────────────── -->
+    <div id="main">
+
+      <!-- Mobile open button -->
+      <button id="sidebar-toggle" aria-label="Open menu">☰</button>
+
+      <!-- Sidebar -->
+      <aside id="sidebar">
+
+        <div class="sidebar-header">
+          <div>
+            <h1>US Unemployment</h1>
+            <p class="sidebar-sub">BLS LAUS · Census ACS</p>
+          </div>
+          <button id="sidebar-close" aria-label="Close">✕</button>
+        </div>
+
+        <!-- Search -->
+        <div class="sidebar-section">
+          <div class="search-wrap">
+            <input type="text" id="search-input"
+                   placeholder="Search state or county…"
+                   autocomplete="off" spellcheck="false">
+            <button id="search-clear" class="hidden" aria-label="Clear">✕</button>
+            <div id="search-results" class="hidden"></div>
+          </div>
+        </div>
+
+        <!-- Selected area -->
+        <div class="sidebar-section">
+          <div class="section-label">Selected</div>
+          <div id="detail-placeholder" class="placeholder-text">
+            Click a state or county
+          </div>
+          <div id="detail-card" class="hidden">
+            <div class="detail-type"  id="detail-type"></div>
+            <div class="detail-name"  id="detail-name"></div>
+            <div class="detail-rate-row">
+              <span class="detail-rate" id="detail-rate"></span>
+              <span class="detail-rank" id="detail-rank"></span>
+            </div>
+            <div class="detail-period" id="detail-period"></div>
+            <div id="trend-loading" class="hidden trend-loading">Loading trend…</div>
+            <div id="trend-wrap" class="hidden">
+              <div class="trend-label">Annual trend</div>
+              <svg id="trend-chart"></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="sidebar-section">
+          <div class="section-label">
+            Filter by rate
+            <button id="filter-reset" class="reset-btn">Reset</button>
+          </div>
+          <div class="filter-row">
+            <span class="filter-lbl">Min</span>
+            <input type="range" id="filter-min" min="0" max="20" step="0.5" value="0">
+            <span class="filter-val" id="filter-min-val">0%</span>
+          </div>
+          <div class="filter-row">
+            <span class="filter-lbl">Max</span>
+            <input type="range" id="filter-max" min="0" max="20" step="0.5" value="20">
+            <span class="filter-val" id="filter-max-val">20%</span>
+          </div>
+        </div>
+
+        <!-- Rankings -->
+        <div class="sidebar-section rankings-section">
+          <div class="section-label">
+            Rankings
+            <span class="view-badge" id="view-badge">States</span>
+          </div>
+          <div class="rank-tabs">
+            <button class="rank-tab active" data-dir="high">▲ Highest</button>
+            <button class="rank-tab"        data-dir="low">▼ Lowest</button>
+          </div>
+          <div id="rankings-list"></div>
+        </div>
+
+        <div class="sidebar-footer">
+          <a href="https://www.bls.gov/lau/" target="_blank" rel="noopener">BLS LAUS</a>
+          &nbsp;·&nbsp;
+          <a href="https://www.census.gov/programs-surveys/acs/" target="_blank" rel="noopener">Census ACS 5-yr</a>
+        </div>
+
+      </aside>
+
+      <!-- Map -->
+      <div id="map-container">
+        <div id="map"></div>
+
+        <!-- Hover tooltip -->
+        <div id="tooltip" class="hidden">
+          <div class="tt-name" id="tt-name"></div>
+          <div class="tt-rate" id="tt-rate"></div>
+          <div class="tt-meta" id="tt-meta"></div>
+        </div>
+
+        <!-- Minimal zoom controls -->
+        <div id="map-controls">
+          <button id="btn-zoom-in"  title="Zoom in">+</button>
+          <button id="btn-zoom-out" title="Zoom out">−</button>
+        </div>
+      </div>
+
+    </div><!-- /main -->
 
   </div><!-- /app -->
 
