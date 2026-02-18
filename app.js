@@ -944,10 +944,14 @@ function initRankTabs() {
 ===================================================================== */
 function initSidebarToggle() {
   const sidebar = document.getElementById('sidebar');
-  document.getElementById('sidebar-toggle').addEventListener('click', () =>
-    sidebar.classList.toggle('open'));
-  document.getElementById('sidebar-close').addEventListener('click', () =>
-    sidebar.classList.remove('open'));
+  document.getElementById('sidebar-toggle').addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+    applyLayout(); // re-sync the JS-driven transform
+  });
+  document.getElementById('sidebar-close').addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    applyLayout();
+  });
 }
 
 /* =====================================================================
@@ -959,6 +963,65 @@ function showError(msg) {
   el.classList.remove('hidden');
   setTimeout(() => el.classList.add('hidden'), 7000);
 }
+
+/* =====================================================================
+   LAYOUT — driven entirely by JS inline styles so CSS failures can't
+   break the map canvas dimensions. Inline styles have highest specificity
+   and are applied synchronously before any async work or MapLibre init.
+   Called once immediately, then again on every window resize.
+===================================================================== */
+const SIDEBAR_W = 290; // px — keep in sync with --sidebar-w CSS var
+
+function applyLayout() {
+  const vw       = window.innerWidth;
+  const vh       = window.innerHeight;
+  const mobile   = vw <= 768;
+  const mapLeft  = mobile ? 0 : SIDEBAR_W;
+  const mapW     = vw - mapLeft;
+
+  setStyle('loading-screen', {
+    position: 'fixed', top: '0', left: '0',
+    width: '100%', height: '100%', zIndex: '9999',
+  });
+
+  setStyle('app', {
+    position: 'fixed', top: '0', left: '0',
+    width: vw + 'px', height: vh + 'px',
+  });
+
+  setStyle('sidebar', {
+    position: 'fixed', top: '0', left: '0',
+    width: SIDEBAR_W + 'px', height: vh + 'px',
+    overflow: 'hidden', zIndex: '10',
+    transform: mobile
+      ? (document.getElementById('sidebar').classList.contains('open')
+          ? 'translateX(0)' : 'translateX(-100%)')
+      : 'none',
+  });
+
+  setStyle('map-container', {
+    position: 'fixed', top: '0', left: mapLeft + 'px',
+    width: mapW + 'px', height: vh + 'px', overflow: 'hidden',
+  });
+
+  // Give #map explicit pixel dimensions — MapLibre requires a non-zero canvas
+  setStyle('map', {
+    display: 'block', width: mapW + 'px', height: vh + 'px',
+  });
+
+  if (map) map.resize();
+}
+
+function setStyle(id, props) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  Object.assign(el.style, props);
+}
+
+// Run synchronously NOW so the map container has real px dimensions
+// before MapLibre is constructed
+applyLayout();
+window.addEventListener('resize', applyLayout);
 
 /* =====================================================================
    MAIN INIT
@@ -1013,7 +1076,8 @@ async function init() {
   });
 
   map.on('load', async () => {
-    // Force the map to recompute its canvas dimensions after CSS layout settles
+    // Re-apply pixel dimensions and force canvas recompute
+    applyLayout();
     map.resize();
 
     setProgress(75, 'Adding layers…');
@@ -1066,9 +1130,6 @@ async function init() {
   });
 
   map.on('error', e => console.warn('MapLibre error:', e.error?.message));
-
-  // Keep map canvas sized correctly when the browser window is resized
-  window.addEventListener('resize', () => map && map.resize());
 }
 
 init();
