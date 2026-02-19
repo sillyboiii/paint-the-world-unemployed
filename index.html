@@ -356,6 +356,76 @@
     }
     #map-controls button:hover { background: rgba(255,255,255,0.12); color: #fff; }
 
+    /* ── Legend ─────────────────────────────────────────────── */
+    #legend {
+      position: absolute;
+      bottom: 108px; right: 16px;
+      width: 200px;
+      background: rgba(12, 12, 18, 0.82);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 14px;
+      padding: 14px 15px 12px;
+      z-index: 10;
+      color: #fff;
+      font-family: inherit;
+    }
+    .legend-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 11px;
+    }
+    .legend-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .legend-row  { display: flex; align-items: center; gap: 9px; }
+    .legend-swatch {
+      width: 13px; height: 13px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+    }
+    .legend-label {
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: rgba(255,255,255,0.85);
+      flex: 1;
+    }
+    .legend-range {
+      font-size: 0.64rem;
+      color: rgba(255,255,255,0.35);
+      margin-left: 3px;
+    }
+    .legend-bar-wrap { margin-bottom: 4px; }
+    .legend-bar {
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(to right,
+        rgb(110,10,35),
+        rgb(168,20,50),
+        rgb(215,48,42),
+        rgb(242,130,30),
+        rgb(245,200,60),
+        rgb(240,232,210)
+      );
+    }
+    .legend-bar-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+      font-size: 0.58rem;
+      color: rgba(255,255,255,0.28);
+    }
+    .legend-note {
+      margin-top: 10px;
+      font-size: 0.62rem;
+      color: rgba(255,255,255,0.28);
+      border-top: 1px solid rgba(255,255,255,0.07);
+      padding-top: 8px;
+    }
+    .legend-note span { color: rgba(255,255,255,0.5); }
+
     /* ── MapLibre overrides ──────────────────────────────────── */
     .maplibregl-ctrl-bottom-right { display: none; }
     .maplibregl-ctrl-attrib       { display: none; }
@@ -544,6 +614,45 @@
         <div id="map-controls">
           <button id="btn-zoom-in"  title="Zoom in">+</button>
           <button id="btn-zoom-out" title="Zoom out">−</button>
+        </div>
+
+        <!-- Legend -->
+        <div id="legend">
+          <div class="legend-title">Unemployment Rate</div>
+          <div class="legend-rows">
+            <div class="legend-row">
+              <div class="legend-swatch" style="background:rgb(240,232,210)"></div>
+              <span class="legend-label">Extreme <span class="legend-range">15%+</span></span>
+            </div>
+            <div class="legend-row">
+              <div class="legend-swatch" style="background:rgb(245,200,60)"></div>
+              <span class="legend-label">Very High <span class="legend-range">11–15%</span></span>
+            </div>
+            <div class="legend-row">
+              <div class="legend-swatch" style="background:rgb(242,130,30)"></div>
+              <span class="legend-label">High <span class="legend-range">8–11%</span></span>
+            </div>
+            <div class="legend-row">
+              <div class="legend-swatch" style="background:rgb(215,48,42)"></div>
+              <span class="legend-label">Moderate <span class="legend-range">5–8%</span></span>
+            </div>
+            <div class="legend-row">
+              <div class="legend-swatch" style="background:rgb(168,20,50)"></div>
+              <span class="legend-label">Low <span class="legend-range">3–5%</span></span>
+            </div>
+            <div class="legend-row">
+              <div class="legend-swatch" style="background:rgb(110,10,35)"></div>
+              <span class="legend-label">Very Low <span class="legend-range">&lt;3%</span></span>
+            </div>
+          </div>
+          <div class="legend-bar-wrap">
+            <div class="legend-bar"></div>
+            <div class="legend-bar-labels">
+              <span>Lower</span>
+              <span>Higher</span>
+            </div>
+          </div>
+          <div class="legend-note">No data? <span>County dimmed.</span></div>
         </div>
       </div>
 
