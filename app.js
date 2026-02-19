@@ -102,13 +102,14 @@ const FALLBACK_RATES = {
    Typical US range (2–8%) lands in the yellow-orange band where
    small differences are immediately readable.
 ===================================================================== */
+// Low unemployment → dark crimson · High unemployment → warm white
 const RATE_STOPS = [
-  { v: 0,  r: 240, g: 232, b: 210 },  // warm cream  (barely unemployed)
-  { v: 3,  r: 245, g: 200, b: 60  },  // bright amber
-  { v: 5,  r: 242, g: 130, b: 30  },  // orange
-  { v: 8,  r: 215, g: 48,  b: 42  },  // red
-  { v: 11, r: 168, g: 20,  b: 50  },  // deep red
-  { v: 15, r: 110, g: 10,  b: 35  },  // dark crimson
+  { v: 0,  r: 110, g: 10,  b: 35  },  // dark crimson
+  { v: 3,  r: 168, g: 20,  b: 50  },  // deep red
+  { v: 5,  r: 215, g: 48,  b: 42  },  // vivid red
+  { v: 8,  r: 242, g: 130, b: 30  },  // orange
+  { v: 11, r: 245, g: 200, b: 60  },  // amber
+  { v: 15, r: 240, g: 232, b: 210 },  // warm cream / near-white
 ];
 
 function rateToColor(rate) {
@@ -274,45 +275,20 @@ async function fetchStateTrend(fips) {
 }
 
 /* =====================================================================
-   MAP STYLE — Carto dark, no labels (labels added on top of choropleth)
+   MAP STYLE — CARTO Dark Matter vector tiles (crisp text at every zoom)
+   Choropleth layers are inserted before the first symbol layer so that
+   place labels always render on top of the fills.
 ===================================================================== */
-const MAP_STYLE = {
-  version: 8,
-  sources: {
-    basemap: {
-      type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
-      ],
-      tileSize: 256,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' +
-        ' &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      maxzoom: 19,
-    },
-    // Labels loaded separately so they can render above the choropleth fills
-    'basemap-labels': {
-      type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
-      ],
-      tileSize: 256,
-      maxzoom: 19,
-    },
-  },
-  layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
-};
+const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 /* =====================================================================
    MAP LAYERS
    States: visible at low zoom, fade out as user zooms past county threshold
    Counties: fade in as user zooms in, fully visible at ZOOM_CO_FULL
 ===================================================================== */
-function addMapLayers() {
+// `before` = first symbol layer id from the vector style — ensures labels
+// always render on top of our choropleth fills.
+function addMapLayers(before) {
   // ── STATES ──────────────────────────────────────────────────────
   map.addSource('states', {
     type: 'geojson',
@@ -328,26 +304,26 @@ function addMapLayers() {
       'fill-color': ['get', 'color'],
       'fill-opacity': [
         'interpolate', ['linear'], ['zoom'],
-        ZOOM_CO_START, 0.90,
+        ZOOM_CO_START, 0.82,
         ZOOM_ST_OUT,   0,
       ],
     },
-  });
+  }, before);
 
-  // Borders
+  // Borders — subtle translucent white so they read on the dark vector basemap
   map.addLayer({
     id: 'states-line',
     type: 'line',
     source: 'states',
     paint: {
-      'line-color': '#3a3a3a',
-      'line-width': 0.7,
+      'line-color': 'rgba(255,255,255,0.22)',
+      'line-width': 0.8,
       'line-opacity': ['interpolate', ['linear'], ['zoom'],
         ZOOM_CO_START, 1,
         ZOOM_ST_OUT,   0,
       ],
     },
-  });
+  }, before);
 
   // Hover overlay (white tint via feature-state)
   map.addLayer({
@@ -361,7 +337,7 @@ function addMapLayers() {
         ['boolean', ['feature-state', 'hover'], false], 0.14, 0,
       ],
     },
-  });
+  }, before);
 
   // Selection outline (white border via feature-state)
   map.addLayer({
@@ -378,7 +354,7 @@ function addMapLayers() {
         ZOOM_ST_OUT,   0,
       ],
     },
-  });
+  }, before);
 
   // ── COUNTIES ────────────────────────────────────────────────────
   map.addSource('counties', {
@@ -395,25 +371,25 @@ function addMapLayers() {
       'fill-color': ['get', 'color'],
       'fill-opacity': ['interpolate', ['linear'], ['zoom'],
         ZOOM_CO_START, 0,
-        ZOOM_CO_FULL,  0.90,
+        ZOOM_CO_FULL,  0.82,
       ],
     },
-  });
+  }, before);
 
-  // Borders (thinner than state borders)
+  // Borders
   map.addLayer({
     id: 'counties-line',
     type: 'line',
     source: 'counties',
     paint: {
-      'line-color': '#2a2a2a',
+      'line-color': 'rgba(255,255,255,0.1)',
       'line-width': 0.35,
       'line-opacity': ['interpolate', ['linear'], ['zoom'],
         ZOOM_CO_START, 0,
-        ZOOM_CO_FULL,  0.9,
+        ZOOM_CO_FULL,  1,
       ],
     },
-  });
+  }, before);
 
   // Hover overlay
   map.addLayer({
@@ -427,7 +403,7 @@ function addMapLayers() {
         ['boolean', ['feature-state', 'hover'], false], 0.18, 0,
       ],
     },
-  });
+  }, before);
 
   // County selection outline
   map.addLayer({
@@ -444,10 +420,8 @@ function addMapLayers() {
         ZOOM_CO_FULL,  1,
       ],
     },
-  });
-
-  // Place name labels — on top of all choropleth fills so they're always readable
-  map.addLayer({ id: 'basemap-labels', type: 'raster', source: 'basemap-labels' });
+  }, before);
+  // Vector tile labels are already baked into MAP_STYLE above all fills.
 }
 
 /* =====================================================================
@@ -998,7 +972,7 @@ function showError(msg) {
    Inline styles from JS override any stale CSS the browser may have cached.
 ===================================================================== */
 const SIDEBAR_W = 290;
-const BANNER_H  = 44;
+const BANNER_H  = 56;
 
 function applyLayout() {
   const vw     = window.innerWidth;
@@ -1134,7 +1108,10 @@ async function init() {
     map.resize();
 
     setProgress(75, 'Adding layers…');
-    addMapLayers();
+    // Insert choropleth fills before the first symbol (label) layer so that
+    // city/state/country text always renders on top of the coloured fills.
+    const firstSymbol = map.getStyle().layers.find(l => l.type === 'symbol');
+    addMapLayers(firstSymbol?.id);
     setupInteractions();
 
     const search = initSearch();
