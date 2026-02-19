@@ -133,6 +133,62 @@ function rateToColor(rate) {
 const DIM_COLOR = '#0a0a14';
 
 /* =====================================================================
+   ALCOHOL DATA — NIAAA Surveillance Report #121
+   Apparent per-capita ethanol consumption (gallons), by state, 2022.
+   Source: National Institute on Alcohol Abuse and Alcoholism (NIAAA)
+   https://www.niaaa.nih.gov/publications/surveillance-reports/surveillance121
+===================================================================== */
+const ALCOHOL_PC = {
+  '01': 1.73, '02': 2.94, '04': 2.44, '05': 1.62, '06': 2.43,
+  '08': 3.05, '09': 2.62, '10': 3.35, '11': 3.73, '12': 2.74,
+  '13': 2.14, '15': 2.70, '16': 2.08, '17': 2.73, '18': 2.09,
+  '19': 2.38, '20': 1.95, '21': 1.85, '22': 2.86, '23': 2.94,
+  '24': 2.61, '25': 2.88, '26': 2.57, '27': 2.79, '28': 1.40,
+  '29': 2.52, '30': 3.25, '31': 2.46, '32': 3.82, '33': 4.43,
+  '34': 2.44, '35': 2.46, '36': 2.47, '37': 2.19, '38': 3.16,
+  '39': 2.39, '40': 1.77, '41': 2.82, '42': 2.50, '44': 2.87,
+  '45': 2.61, '46': 3.07, '47': 1.94, '48': 2.25, '49': 1.23,
+  '50': 3.40, '51': 2.45, '53': 2.88, '54': 1.87, '55': 3.19,
+  '56': 3.24,
+};
+
+// Approximate geographic centroids [lng, lat] for each state
+const STATE_CENTROIDS = {
+  '01': [-86.79, 32.80], '02': [-153.37, 64.20], '04': [-111.93, 34.05],
+  '05': [-92.27, 34.75], '06': [-119.68, 36.78], '08': [-105.55, 39.00],
+  '09': [-72.68, 41.60], '10': [-75.52, 38.99], '11': [-77.03, 38.91],
+  '12': [-81.52, 27.77], '13': [-83.44, 32.69], '15': [-157.50, 20.27],
+  '16': [-114.48, 44.24], '17': [-89.20, 40.00], '18': [-86.13, 40.27],
+  '19': [-93.21, 42.03], '20': [-98.38, 38.53], '21': [-84.87, 37.64],
+  '22': [-91.87, 31.17], '23': [-69.43, 44.69], '24': [-76.80, 39.05],
+  '25': [-71.56, 42.36], '26': [-85.54, 44.18], '27': [-93.90, 46.39],
+  '28': [-89.66, 32.74], '29': [-91.83, 38.46], '30': [-110.36, 46.88],
+  '31': [-99.90, 41.49], '32': [-116.42, 38.31], '33': [-71.57, 44.00],
+  '34': [-74.40, 40.06], '35': [-106.24, 34.84], '36': [-75.50, 42.94],
+  '37': [-79.39, 35.63], '38': [-100.47, 47.43], '39': [-82.79, 40.41],
+  '40': [-97.52, 35.47], '41': [-120.55, 43.94], '42': [-77.26, 40.59],
+  '44': [-71.47, 41.70], '45': [-80.95, 33.86], '46': [-100.24, 44.44],
+  '47': [-86.34, 35.86], '48': [-99.34, 31.47], '49': [-111.09, 39.32],
+  '50': [-72.65, 44.05], '51': [-78.17, 37.77], '53': [-120.74, 47.40],
+  '54': [-80.45, 38.65], '55': [-89.62, 44.25], '56': [-107.55, 43.08],
+};
+
+// Approximate geographic spread (degrees) — bigger states get wider scatter
+const STATE_SPREAD = {
+  '01': 2.5, '02': 5.5, '04': 3.5, '05': 2.5, '06': 4.0,
+  '08': 3.2, '09': 0.5, '10': 0.4, '11': 0.1, '12': 2.8,
+  '13': 2.3, '15': 1.2, '16': 3.2, '17': 2.2, '18': 2.0,
+  '19': 2.5, '20': 3.2, '21': 2.3, '22': 2.3, '23': 1.8,
+  '24': 1.3, '25': 1.0, '26': 2.5, '27': 3.2, '28': 2.3,
+  '29': 2.8, '30': 4.2, '31': 3.2, '32': 4.0, '33': 0.9,
+  '34': 0.7, '35': 3.8, '36': 2.2, '37': 2.8, '38': 3.8,
+  '39': 2.2, '40': 2.8, '41': 3.2, '42': 2.2, '44': 0.4,
+  '45': 1.8, '46': 3.2, '47': 2.5, '48': 5.5, '49': 3.2,
+  '50': 0.9, '51': 1.8, '53': 3.2, '54': 1.6, '55': 2.5,
+  '56': 3.8,
+};
+
+/* =====================================================================
    BLS series-ID builder — seasonally adjusted state unemployment rate
 ===================================================================== */
 function blsSeriesId(fips) {
@@ -156,6 +212,7 @@ let selectedFips     = null;
 let selectedType     = null; // 'state' | 'county'
 let hoveredStateId   = null;
 let hoveredCountyId  = null;
+let alcoholVisible   = true;
 
 /* =====================================================================
    LOADING PROGRESS
@@ -272,6 +329,85 @@ async function fetchStateTrend(fips) {
   }
 
   return annual;
+}
+
+/* =====================================================================
+   ALCOHOL DOTS — random scatter per state, density ∝ per-capita consumption
+   Uses a seeded LCG PRNG per state for reproducible dot positions.
+===================================================================== */
+function buildAlcoholDots() {
+  const MIN_PC = 1.23; // Utah 2022
+  const MAX_PC = 4.43; // New Hampshire 2022
+  const features = [];
+
+  for (const [fips, consumption] of Object.entries(ALCOHOL_PC)) {
+    const centroid = STATE_CENTROIDS[fips];
+    if (!centroid) continue;
+    const spread   = STATE_SPREAD[fips] || 2.0;
+    // Scale dot count: min consumption → 5 dots, max → 22 dots
+    const dotCount = Math.round(5 + ((consumption - MIN_PC) / (MAX_PC - MIN_PC)) * 17);
+
+    // Seeded PRNG (LCG) per state — always same positions on reload
+    let s = parseInt(fips, 10) * 997 + 12345;
+    const rand = () => {
+      s = (s * 1664525 + 1013904223) & 0xffffffff;
+      return (s >>> 0) / 4294967296;
+    };
+
+    for (let i = 0; i < dotCount; i++) {
+      const angle = rand() * 2 * Math.PI;
+      const dist  = Math.sqrt(rand()) * spread; // sqrt → uniform disk distribution
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [
+            centroid[0] + Math.cos(angle) * dist,
+            centroid[1] + Math.sin(angle) * dist * 0.68, // slight lat compression
+          ],
+        },
+        properties: { fips, consumption },
+      });
+    }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function addAlcoholLayer(before) {
+  map.addSource('alcohol-dots', {
+    type: 'geojson',
+    data: buildAlcoholDots(),
+  });
+  map.addLayer({
+    id: 'alcohol-dots-layer',
+    type: 'circle',
+    source: 'alcohol-dots',
+    paint: {
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        3, 2.5,
+        6, 4.5,
+        10, 8,
+      ],
+      'circle-color': '#4dd0e1',
+      'circle-opacity': 0.55,
+      'circle-stroke-width': 0.7,
+      'circle-stroke-color': 'rgba(255,255,255,0.22)',
+    },
+  }, before);
+}
+
+function initAlcoholToggle() {
+  const btn          = document.getElementById('btn-alcohol');
+  const legendEntry  = document.getElementById('legend-alcohol');
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    alcoholVisible = !alcoholVisible;
+    map.setLayoutProperty('alcohol-dots-layer', 'visibility', alcoholVisible ? 'visible' : 'none');
+    btn.classList.toggle('active', alcoholVisible);
+    if (legendEntry) legendEntry.style.opacity = alcoholVisible ? '1' : '0.35';
+  });
 }
 
 /* =====================================================================
@@ -422,6 +558,9 @@ function addMapLayers(before) {
     },
   }, before);
   // Vector tile labels are already baked into MAP_STYLE above all fills.
+
+  // ── ALCOHOL DOTS ─────────────────────────────────────────────────
+  addAlcoholLayer(before);
 }
 
 /* =====================================================================
@@ -1119,6 +1258,7 @@ async function init() {
     initRankTabs();
     initMapControls();
     initSidebarToggle();
+    initAlcoholToggle();
     renderRankings();
 
     hideLoading();
