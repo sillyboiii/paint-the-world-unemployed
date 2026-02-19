@@ -304,7 +304,7 @@ function addMapLayers(before) {
       'fill-color': ['get', 'color'],
       'fill-opacity': [
         'interpolate', ['linear'], ['zoom'],
-        ZOOM_CO_START, 0.82,
+        ZOOM_CO_START, 0.65,
         ZOOM_ST_OUT,   0,
       ],
     },
@@ -371,7 +371,7 @@ function addMapLayers(before) {
       'fill-color': ['get', 'color'],
       'fill-opacity': ['interpolate', ['linear'], ['zoom'],
         ZOOM_CO_START, 0,
-        ZOOM_CO_FULL,  0.82,
+        ZOOM_CO_FULL,  0.65,
       ],
     },
   }, before);
