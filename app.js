@@ -173,19 +173,19 @@ const STATE_CENTROIDS = {
   '54': [-80.45, 38.65], '55': [-89.62, 44.25], '56': [-107.55, 43.08],
 };
 
-// Approximate geographic spread (degrees) — bigger states get wider scatter
+// Approximate geographic spread (degrees) — reduced for coastal states to avoid ocean dots
 const STATE_SPREAD = {
-  '01': 2.5, '02': 5.5, '04': 3.5, '05': 2.5, '06': 4.0,
-  '08': 3.2, '09': 0.5, '10': 0.4, '11': 0.1, '12': 2.8,
-  '13': 2.3, '15': 1.2, '16': 3.2, '17': 2.2, '18': 2.0,
-  '19': 2.5, '20': 3.2, '21': 2.3, '22': 2.3, '23': 1.8,
-  '24': 1.3, '25': 1.0, '26': 2.5, '27': 3.2, '28': 2.3,
-  '29': 2.8, '30': 4.2, '31': 3.2, '32': 4.0, '33': 0.9,
-  '34': 0.7, '35': 3.8, '36': 2.2, '37': 2.8, '38': 3.8,
-  '39': 2.2, '40': 2.8, '41': 3.2, '42': 2.2, '44': 0.4,
-  '45': 1.8, '46': 3.2, '47': 2.5, '48': 5.5, '49': 3.2,
-  '50': 0.9, '51': 1.8, '53': 3.2, '54': 1.6, '55': 2.5,
-  '56': 3.8,
+  '01': 1.2, '02': 3.5, '04': 2.0, '05': 1.5, '06': 1.8,
+  '08': 2.0, '09': 0.3, '10': 0.22,'11': 0.08,'12': 1.0,
+  '13': 1.2, '15': 0.7, '16': 2.0, '17': 1.2, '18': 1.2,
+  '19': 1.8, '20': 2.0, '21': 1.5, '22': 1.0, '23': 0.8,
+  '24': 0.6, '25': 0.5, '26': 1.4, '27': 2.0, '28': 1.1,
+  '29': 1.8, '30': 2.5, '31': 2.0, '32': 2.5, '33': 0.5,
+  '34': 0.4, '35': 2.2, '36': 1.2, '37': 1.5, '38': 2.5,
+  '39': 1.2, '40': 1.8, '41': 1.8, '42': 1.2, '44': 0.22,
+  '45': 1.0, '46': 2.0, '47': 1.5, '48': 2.8, '49': 2.0,
+  '50': 0.6, '51': 1.0, '53': 1.8, '54': 1.0, '55': 1.5,
+  '56': 2.2,
 };
 
 /* =====================================================================
@@ -373,13 +373,22 @@ function buildAlcoholDots() {
   return { type: 'FeatureCollection', features };
 }
 
+// Consumption → colour: dark muted teal (low) → vivid teal (mid) → ice white (high)
+// Mirrors the map's warm-to-cool contrast without fighting the unemployment palette.
+const ALCOHOL_COLOR_EXPR = [
+  'interpolate', ['linear'], ['get', 'consumption'],
+  1.23, '#1d6b78',   // dark teal – low consumption (Utah)
+  2.50, '#4dd0e1',   // vivid teal – national average
+  4.43, '#e4f6fa',   // ice white  – high consumption (NH)
+];
+
 function addAlcoholLayer(before) {
   map.addSource('alcohol-dots', {
     type: 'geojson',
     data: buildAlcoholDots(),
   });
 
-  // Outer glow — soft, blurred halo that makes spots visible at any zoom
+  // Outer glow — blurred halo; also gradient-coloured so halos themselves vary
   map.addLayer({
     id: 'alcohol-dots-glow',
     type: 'circle',
@@ -387,17 +396,21 @@ function addAlcoholLayer(before) {
     paint: {
       'circle-radius': [
         'interpolate', ['linear'], ['zoom'],
-        3, 10,
-        6, 16,
-        10, 26,
+        3, 9,
+        6, 14,
+        10, 22,
       ],
-      'circle-color': '#4dd0e1',
-      'circle-opacity': 0.18,
+      'circle-color': ALCOHOL_COLOR_EXPR,
+      'circle-opacity': [
+        'interpolate', ['linear'], ['get', 'consumption'],
+        1.23, 0.08,
+        4.43, 0.20,
+      ],
       'circle-blur': 1,
     },
   }, before);
 
-  // Core dot — solid, sharp centre
+  // Core dot — solid centre, size + opacity + stroke all driven by consumption
   map.addLayer({
     id: 'alcohol-dots-layer',
     type: 'circle',
@@ -405,14 +418,22 @@ function addAlcoholLayer(before) {
     paint: {
       'circle-radius': [
         'interpolate', ['linear'], ['zoom'],
-        3, 4.5,
-        6, 7,
-        10, 12,
+        3, 3.5,
+        6, 5.5,
+        10, 10,
       ],
-      'circle-color': '#4dd0e1',
-      'circle-opacity': 0.75,
-      'circle-stroke-width': 0.8,
-      'circle-stroke-color': 'rgba(255,255,255,0.30)',
+      'circle-color': ALCOHOL_COLOR_EXPR,
+      'circle-opacity': [
+        'interpolate', ['linear'], ['get', 'consumption'],
+        1.23, 0.40,   // faint for low consumers
+        4.43, 0.82,   // bright for high consumers
+      ],
+      'circle-stroke-width': 0.7,
+      'circle-stroke-color': [
+        'interpolate', ['linear'], ['get', 'consumption'],
+        1.23, 'rgba(77,208,225,0.12)',
+        4.43, 'rgba(228,246,250,0.38)',
+      ],
     },
   }, before);
 }
