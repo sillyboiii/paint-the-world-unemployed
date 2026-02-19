@@ -378,6 +378,26 @@ function addAlcoholLayer(before) {
     type: 'geojson',
     data: buildAlcoholDots(),
   });
+
+  // Outer glow — soft, blurred halo that makes spots visible at any zoom
+  map.addLayer({
+    id: 'alcohol-dots-glow',
+    type: 'circle',
+    source: 'alcohol-dots',
+    paint: {
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        3, 10,
+        6, 16,
+        10, 26,
+      ],
+      'circle-color': '#4dd0e1',
+      'circle-opacity': 0.18,
+      'circle-blur': 1,
+    },
+  }, before);
+
+  // Core dot — solid, sharp centre
   map.addLayer({
     id: 'alcohol-dots-layer',
     type: 'circle',
@@ -385,26 +405,31 @@ function addAlcoholLayer(before) {
     paint: {
       'circle-radius': [
         'interpolate', ['linear'], ['zoom'],
-        3, 2.5,
-        6, 4.5,
-        10, 8,
+        3, 4.5,
+        6, 7,
+        10, 12,
       ],
       'circle-color': '#4dd0e1',
-      'circle-opacity': 0.55,
-      'circle-stroke-width': 0.7,
-      'circle-stroke-color': 'rgba(255,255,255,0.22)',
+      'circle-opacity': 0.75,
+      'circle-stroke-width': 0.8,
+      'circle-stroke-color': 'rgba(255,255,255,0.30)',
     },
   }, before);
 }
 
 function initAlcoholToggle() {
-  const btn          = document.getElementById('btn-alcohol');
-  const legendEntry  = document.getElementById('legend-alcohol');
+  const btn         = document.getElementById('btn-alcohol');
+  const legendEntry = document.getElementById('legend-alcohol');
   if (!btn) return;
+
+  const LAYERS = ['alcohol-dots-glow', 'alcohol-dots-layer'];
 
   btn.addEventListener('click', () => {
     alcoholVisible = !alcoholVisible;
-    map.setLayoutProperty('alcohol-dots-layer', 'visibility', alcoholVisible ? 'visible' : 'none');
+    const vis = alcoholVisible ? 'visible' : 'none';
+    LAYERS.forEach(id => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+    });
     btn.classList.toggle('active', alcoholVisible);
     if (legendEntry) legendEntry.style.opacity = alcoholVisible ? '1' : '0.35';
   });
